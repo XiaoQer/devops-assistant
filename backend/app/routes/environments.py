@@ -5,6 +5,12 @@ from app.services.environment_service import EnvironmentService
 from app.services.configuration_service import ConfigurationService
 from app.utils.errors import ApiError
 from app.utils.response import success
+from app.utils.validation import (
+    json_object,
+    require_positive_int,
+    require_query_positive_int,
+    require_string,
+)
 
 bp = Blueprint("environments", __name__, url_prefix="/api")
 
@@ -33,14 +39,16 @@ def list_environments(app_id):
 
 @bp.post("/applications/<int:app_id>/environments")
 def create_environment(app_id):
-    item = EnvironmentService().create(get_app(app_id), request.get_json(silent=True) or {})
+    payload = json_object(request.get_json(silent=True), required=True)
+    require_string(payload, "environment_name")
+    item = EnvironmentService().create(get_app(app_id), payload)
     return success(item.to_dict(), "环境已创建", 201)
 
 
 @bp.patch("/applications/<int:app_id>/environments/<int:env_id>")
 def update_environment(app_id, env_id):
     item = EnvironmentService().update(
-        get_env(app_id, env_id), request.get_json(silent=True) or {}
+        get_env(app_id, env_id), json_object(request.get_json(silent=True), required=True)
     )
     return success(item.to_dict(), "环境配置已更新")
 
@@ -53,11 +61,10 @@ def delete_environment(app_id, env_id):
 
 @bp.post("/applications/<int:app_id>/environments/<int:env_id>/clone")
 def clone_environment(app_id, env_id):
-    payload = request.get_json(silent=True) or {}
-    if not payload.get("environment_name"):
-        raise ApiError("environment_name 为必填字段")
+    payload = json_object(request.get_json(silent=True), required=True)
+    environment_name = require_string(payload, "environment_name")
     item = EnvironmentService().clone(
-        get_env(app_id, env_id), payload["environment_name"], payload.get("namespace")
+        get_env(app_id, env_id), environment_name, payload.get("namespace")
     )
     return success(item.to_dict(), "环境已克隆", 201)
 
@@ -69,8 +76,8 @@ def export_environment(app_id, env_id):
 
 @bp.get("/applications/<int:app_id>/environments/compare")
 def compare_environments(app_id):
-    left = get_env(app_id, request.args.get("left", type=int))
-    right = get_env(app_id, request.args.get("right", type=int))
+    left = get_env(app_id, require_query_positive_int(request.args, "left"))
+    right = get_env(app_id, require_query_positive_int(request.args, "right"))
     return success(EnvironmentService.compare(left, right))
 
 
@@ -86,8 +93,8 @@ def list_configs(app_id):
 
 @bp.post("/applications/<int:app_id>/configs")
 def create_config(app_id):
-    payload = request.get_json(silent=True) or {}
-    environment_id = payload.get("environment_id")
+    payload = json_object(request.get_json(silent=True), required=True)
+    environment_id = require_positive_int(payload, "environment_id")
     get_env(app_id, environment_id)
     service = ConfigurationService()
     item = service.create(
@@ -103,7 +110,7 @@ def update_config(config_id):
         raise ApiError("配置不存在", 404, "CONFIG_NOT_FOUND")
     service = ConfigurationService()
     updated = service.update(
-        item, request.get_json(silent=True) or {},
+        item, json_object(request.get_json(silent=True), required=True),
         request.headers.get("X-User", "local-user"),
     )
     return success(service.serialize(updated), "配置已更新")

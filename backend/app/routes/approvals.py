@@ -4,6 +4,7 @@ from app.models import ApprovalRecord, Application
 from app.services.approval_service import ApprovalService
 from app.utils.errors import ApiError
 from app.utils.response import success
+from app.utils.validation import json_object, require_positive_int, require_string
 
 bp = Blueprint("approvals", __name__, url_prefix="/api/approvals")
 
@@ -37,8 +38,9 @@ def list_approvals():
 
 @bp.post("")
 def submit_approval():
-    payload = request.get_json(silent=True) or {}
-    app = Application.query.get(payload.get("application_id"))
+    payload = json_object(request.get_json(silent=True), required=True)
+    application_id = require_positive_int(payload, "application_id")
+    app = Application.query.get(application_id)
     if not app:
         raise ApiError("应用不存在", 404, "APPLICATION_NOT_FOUND")
     item = ApprovalService().submit(
@@ -49,7 +51,7 @@ def submit_approval():
 
 @bp.post("/<int:approval_id>/approve")
 def approve(approval_id):
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request.get_json(silent=True))
     item = ApprovalService().approve(
         get_approval(approval_id),
         request.headers.get("X-User", "project-owner"),
@@ -60,12 +62,11 @@ def approve(approval_id):
 
 @bp.post("/<int:approval_id>/reject")
 def reject(approval_id):
-    payload = request.get_json(silent=True) or {}
-    if not payload.get("comment"):
-        raise ApiError("拒绝审批时必须填写意见")
+    payload = json_object(request.get_json(silent=True), required=True)
+    comment = require_string(payload, "comment")
     item = ApprovalService().reject(
         get_approval(approval_id),
         request.headers.get("X-User", "project-owner"),
-        payload["comment"],
+        comment,
     )
     return success(item.to_dict(), "审批已拒绝")

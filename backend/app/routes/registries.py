@@ -4,6 +4,7 @@ from app.models import ContainerRegistry
 from app.services.registry_service import RegistryService
 from app.utils.errors import ApiError
 from app.utils.response import success
+from app.utils.validation import json_object, require_fields
 
 bp = Blueprint("registries", __name__, url_prefix="/api/registries")
 
@@ -22,14 +23,16 @@ def list_registries():
 
 @bp.post("")
 def create_registry():
-    item = RegistryService().create(request.get_json(silent=True) or {})
+    payload = json_object(request.get_json(silent=True), required=True)
+    require_fields(payload, "name", "server")
+    item = RegistryService().create(payload)
     return success(item.to_dict(), "镜像仓库已创建", 201)
 
 
 @bp.patch("/<int:registry_id>")
 def update_registry(registry_id):
     item = RegistryService().update(
-        get_registry(registry_id), request.get_json(silent=True) or {}
+        get_registry(registry_id), json_object(request.get_json(silent=True), required=True)
     )
     return success(item.to_dict(), "镜像仓库已更新")
 

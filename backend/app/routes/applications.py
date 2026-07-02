@@ -7,6 +7,12 @@ from app.services.release_service import ReleaseService
 from app.services.approval_service import ApprovalService
 from app.utils.errors import ApiError
 from app.utils.response import success
+from app.utils.validation import (
+    json_object,
+    require_fields,
+    require_positive_int,
+    require_string,
+)
 from app.extensions import db
 
 bp = Blueprint("applications", __name__, url_prefix="/api/applications")
@@ -27,7 +33,9 @@ def list_applications():
 
 @bp.post("")
 def create_application():
-    app = ApplicationService().create(request.get_json(silent=True) or {})
+    payload = json_object(request.get_json(silent=True), required=True)
+    require_fields(payload, "name", "repo_url")
+    app = ApplicationService().create(payload)
     return success(app.to_dict(), "应用分析完成", 201)
 
 
@@ -38,9 +46,9 @@ def application_detail(app_id):
 
 @bp.post("/<int:app_id>/deploy")
 def deploy_application(app_id):
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request.get_json(silent=True))
     app = get_application(app_id)
-    environment_name = payload.get("environment", "dev")
+    environment_name = require_string(payload, "environment") if "environment" in payload else "dev"
     environment = ApplicationEnvironment.query.filter_by(
         application_id=app.id, environment_name=environment_name
     ).first()
@@ -82,13 +90,13 @@ def list_releases(app_id):
 
 @bp.post("/<int:app_id>/rollback")
 def rollback_application(app_id):
-    payload = request.get_json(silent=True) or {}
-    if not payload.get("release_id"):
-        raise ApiError("release_id 为必填字段")
+    payload = json_object(request.get_json(silent=True), required=True)
+    release_id = require_positive_int(payload, "release_id")
+    environment_name = require_string(payload, "environment") if "environment" in payload else "dev"
     result, release = ReleaseService().rollback(
         get_application(app_id),
-        payload["release_id"],
-        payload.get("environment", "dev"),
+        release_id,
+        environment_name,
         request.headers.get("X-User", "local-user"),
     )
     return success(

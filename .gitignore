@@ -10,6 +10,13 @@ __pycache__/
 .venv/
 venv/
 .env
+.pytest_cache/
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+*.db
+*.sqlite3
 
 # Frontend build artifacts
 frontend/dist/
@@ -21,6 +28,7 @@ frontend/tsconfig.tsbuildinfo
 backend/.venv/
 backend/__pycache__/
 backend/**/*.pyc
+backend/.pytest_cache/
 
 # Logs
 *.log

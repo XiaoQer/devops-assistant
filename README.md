@@ -5,17 +5,15 @@ Application Spec，并通过 Kubernetes API 创建 Tekton PipelineRun。
 
 ## 文档入口
 
-如果你希望系统性了解这个平台的产品定位、架构设计、领域模型、前后端设计、部署方式，以及可直接提供给 AI 的上下文材料，请优先阅读：
+项目采用 Harness Engineering 工作方式。仓库而不是聊天记录是项目事实来源：
 
-- [`docs/README.md`](./docs/README.md)
-- [`docs/01-product-overview.md`](./docs/01-product-overview.md)
-- [`docs/02-system-architecture.md`](./docs/02-system-architecture.md)
-- [`docs/08-ai-context-prompt.md`](./docs/08-ai-context-prompt.md)
+- [`AGENTS.md`](./AGENTS.md)：Agent 工作规则、架构约束与完成定义
+- [`docs/README.md`](./docs/README.md)：产品、架构、领域模型与当前状态
+- [`specs/README.md`](./specs/README.md)：需求规格、验收条件与历史记录
+- [`scripts/verify.sh`](./scripts/verify.sh)：本地和 CI 共用的验证入口
 
-`docs/` 目录的目标是同时服务两类读者：
-
-1. **工程团队成员**：帮助理解平台设计、代码边界和演进方向
-2. **AI / 智能代理**：为代码生成、架构分析和功能扩展提供稳定上下文
+开始功能开发前，先从 `specs/template.md` 创建需求规格。行为发生变化后，同步更新
+`docs/current-state.md`；长期架构选择记录在 `docs/decisions/`。
 
 ## 架构
 

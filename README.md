@@ -3,6 +3,20 @@
 从 GitHub 仓库自动识别 Java、Node.js 或 Dockerfile 项目，生成统一
 Application Spec，并通过 Kubernetes API 创建 Tekton PipelineRun。
 
+## 文档入口
+
+如果你希望系统性了解这个平台的产品定位、架构设计、领域模型、前后端设计、部署方式，以及可直接提供给 AI 的上下文材料，请优先阅读：
+
+- [`docs/README.md`](./docs/README.md)
+- [`docs/01-product-overview.md`](./docs/01-product-overview.md)
+- [`docs/02-system-architecture.md`](./docs/02-system-architecture.md)
+- [`docs/08-ai-context-prompt.md`](./docs/08-ai-context-prompt.md)
+
+`docs/` 目录的目标是同时服务两类读者：
+
+1. **工程团队成员**：帮助理解平台设计、代码边界和演进方向
+2. **AI / 智能代理**：为代码生成、架构分析和功能扩展提供稳定上下文
+
 ## 架构
 
 ```text

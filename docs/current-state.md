@@ -8,6 +8,8 @@
 
 - 基于 Vue 3、TypeScript、Pinia、Vue Router、Element Plus 和 Vite 的前端。
 - Portal、项目中心和开发中心导航。
+- Portal 提供平台定位、从 Git 到 Kubernetes 的交付链路介绍，以及项目治理和
+  应用交付两个工作空间入口。
 - 项目 CRUD、成员管理、Kubernetes 集群管理和项目级镜像仓库。
 - 基于代码仓库创建应用，并分析 Java、Node.js 或 Dockerfile 项目。
 - 应用环境和配置的增删改查、克隆、比较与导出。

@@ -10,6 +10,8 @@ export default createRouter({
       redirect: '/dashboard',
       children: [
         { path: 'dashboard', component: () => import('../views/Dashboard.vue') },
+        { path: 'projects', component: () => import('../views/ProjectList.vue') },
+        { path: 'projects/:id', component: () => import('../views/ProjectDetail.vue') },
         { path: 'applications', component: () => import('../views/ApplicationList.vue') },
         { path: 'applications/new', component: () => import('../views/ApplicationCreate.vue') },
         { path: 'applications/:id', component: () => import('../views/ApplicationDetail.vue') },

@@ -47,12 +47,8 @@ class EnvironmentServiceTest(unittest.TestCase):
     def test_list_creates_default_environments(self):
         items = EnvironmentService().list(self.application)
 
-        self.assertEqual(
-            [item.environment_name for item in items],
-            ["dev", "test", "staging", "prod"],
-        )
-        prod = next(item for item in items if item.environment_name == "prod")
-        self.assertTrue(prod.approval_required)
+        self.assertEqual([item.environment_name for item in items], ["dev"])
+        self.assertFalse(items[0].approval_required)
 
     def test_delete_rejects_production_environment(self):
         prod = EnvironmentService().create(self.application, {

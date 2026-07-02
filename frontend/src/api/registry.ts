@@ -3,14 +3,16 @@ import type { ContainerRegistry } from '../types'
 
 export type RegistryInput = Omit<
   ContainerRegistry,
-  'id' | 'provider' | 'image_prefix' | 'has_credentials' | 'created_at' | 'updated_at'
+  'id' | 'provider' | 'image_prefix' | 'has_credentials' | 'created_at' | 'updated_at' | 'project_name'
 > & {
   provider: string
   password?: string
 }
 
 export const registryApi = {
-  list: () => client.get<never, ContainerRegistry[]>('/registries'),
+  list: (projectId?: number) => client.get<never, ContainerRegistry[]>('/registries', {
+    params: projectId ? { projectId } : undefined,
+  }),
   create: (input: Partial<RegistryInput>) =>
     client.post<never, ContainerRegistry>('/registries', input),
   update: (id: number, input: Partial<RegistryInput>) =>

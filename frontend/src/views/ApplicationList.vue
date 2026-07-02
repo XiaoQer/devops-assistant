@@ -22,6 +22,10 @@
         <el-input v-model="query" placeholder="搜索应用、仓库或技术栈…" clearable />
       </div>
       <div class="filter-actions">
+        <el-select v-model="projectId" style="width: 220px">
+          <el-option label="全部项目" :value="0" />
+          <el-option v-for="project in projects" :key="project.id" :label="project.name" :value="project.id" />
+        </el-select>
         <el-select v-model="status" style="width: 150px">
           <el-option label="全部状态" value="" />
           <el-option v-for="s in statuses" :key="s" :label="s" :value="s" />
@@ -39,6 +43,7 @@
               <div>
                 <h3>{{ app.name }}</h3>
                 <p>{{ shortRepo(app.repo_url) }}</p>
+                <small class="project-badge">{{ app.project_name || 'Default Project' }}</small>
               </div>
             </div>
             <StatusBadge :status="getStatus(app)" />
@@ -67,7 +72,7 @@
 
           <div class="app-actions">
             <el-button @click="router.push(`/applications/${app.id}`)">打开工作区</el-button>
-            <el-button type="primary" :loading="deployingId === app.id" @click="deploy(app.id)">立即部署</el-button>
+            <el-button type="primary" @click="router.push(`/applications/${app.id}`)">进入发布</el-button>
           </div>
         </article>
 
@@ -115,8 +120,9 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useApplicationStore } from '../stores/application'
-import { applicationApi } from '../api/application'
-import type { Application } from '../types'
+import { projectApi } from '../api/project'
+import { useProjectStore } from '../stores/project'
+import type { Application, Project } from '../types'
 import PageHeader from '../components/common/PageHeader.vue'
 import MetricCard from '../components/common/MetricCard.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
@@ -124,12 +130,14 @@ import EmptyState from '../components/common/EmptyState.vue'
 
 const router = useRouter()
 const store = useApplicationStore()
+const projectStore = useProjectStore()
 const query = ref('')
 const status = ref('')
+const projectId = ref(0)
 const page = ref(1)
 const pageSize = 9
-const deployingId = ref(0)
 const statuses = ['Succeeded', 'Running', 'Pending', 'Failed', 'analyzed']
+const projects = ref<Project[]>([])
 
 function getStatus(application: Application) {
   return application.latest_execution?.status || application.status
@@ -149,26 +157,21 @@ function shortRepo(url: string) {
   return url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '')
 }
 
-watch([query, status], () => {
+watch([query, status, projectId], () => {
   page.value = 1
 })
 
-onMounted(() => {
-  store.load()
+watch(projectId, async value => {
+  await store.load(value || undefined)
+  if (value) projectStore.setActiveProject(value)
 })
 
-async function deploy(id: number) {
-  deployingId.value = id
-  try {
-    const run = await applicationApi.deploy(id)
-    ElMessage.success(`已创建 ${run.pipeline_run_name}`)
-    await store.load()
-  } catch (error) {
-    ElMessage.error((error as Error).message)
-  } finally {
-    deployingId.value = 0
-  }
-}
+onMounted(async () => {
+  projectStore.init()
+  projects.value = await projectApi.list()
+  projectId.value = projectStore.activeProjectId
+  await store.load(projectId.value || undefined)
+})
 </script>
 
 <style scoped>
@@ -272,6 +275,13 @@ async function deploy(id: number) {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.project-badge {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--primary);
+  font-size: 12px;
 }
 
 .app-meta {

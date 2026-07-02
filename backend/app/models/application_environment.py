@@ -14,6 +14,9 @@ class ApplicationEnvironment(db.Model):
     application_id = db.Column(
         db.Integer, db.ForeignKey("applications.id"), nullable=False, index=True
     )
+    kubernetes_cluster_id = db.Column(
+        db.Integer, db.ForeignKey("kubernetes_clusters.id"), nullable=True, index=True
+    )
     environment_name = db.Column(db.String(30), nullable=False, index=True)
     display_name = db.Column(db.String(80))
     cluster_name = db.Column(db.String(120), default="default")
@@ -41,6 +44,7 @@ class ApplicationEnvironment(db.Model):
     )
 
     application = db.relationship("Application", back_populates="environments")
+    kubernetes_cluster = db.relationship("KubernetesCluster", back_populates="environments")
     configs = db.relationship(
         "ApplicationConfig",
         back_populates="environment",

@@ -31,4 +31,8 @@ export const pipelineApi = {
     }>(`/pipelines/${name}/logs`, {
       params: { namespace },
     }),
+  retry: (name: string, namespace = 'devops-platform') =>
+    client.post<never, { name: string; retried_from: string }>(`/pipelines/${name}/retry`, {}, {
+      params: { namespace },
+    }),
 }

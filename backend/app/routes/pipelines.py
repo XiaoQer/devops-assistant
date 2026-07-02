@@ -1,6 +1,7 @@
 from flask import Blueprint, current_app, request
 
 from app.services.tekton_service import TektonService
+from app.utils.errors import ApiError
 from app.utils.response import success
 
 bp = Blueprint("pipelines", __name__, url_prefix="/api/pipelines")
@@ -50,3 +51,13 @@ def pipeline_logs(pipeline_run_name):
     data = service.get_pipeline_run_log_details(pipeline_run_name, namespace())
     data["logs"] = service.get_pipeline_run_logs(pipeline_run_name, namespace())
     return success(data)
+
+
+@bp.post("/<pipeline_run_name>/retry")
+def retry_pipeline(pipeline_run_name):
+    try:
+        data = TektonService().retry_pipeline_run(pipeline_run_name, namespace())
+    except ValueError as exc:
+        raise ApiError(str(exc), 409, "PIPELINE_RETRY_NOT_ALLOWED") from exc
+    return success(data, "PipelineRun 重试已提交", 201)
+

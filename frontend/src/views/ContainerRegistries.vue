@@ -1,9 +1,9 @@
 <template>
   <div class="page-content page-stack">
     <PageHeader
-      eyebrow="Platform settings"
+      eyebrow="Project settings"
       title="Container registries"
-      description="统一管理构建推送与 Kubernetes 拉取镜像所需的仓库和凭证。"
+      :description="projectStore.activeProject ? `管理 ${projectStore.activeProject.name} 的镜像仓库和凭证。` : '请先选择一个项目。'"
     >
       <el-button type="primary" @click="openCreate">＋ 添加镜像仓库</el-button>
     </PageHeader>
@@ -12,7 +12,7 @@
       <span>▣</span>
       <div>
         <b>平台级镜像仓库</b>
-        <p>应用默认继承平台 Registry，镜像路径自动生成为 Registry / Namespace / Application / Tag。</p>
+        <p>应用默认继承当前项目的 Registry，镜像路径自动生成为 Registry / Namespace / Application / Tag。</p>
       </div>
     </section>
 
@@ -112,8 +112,10 @@ import PageHeader from '../components/common/PageHeader.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 import { registryApi } from '../api/registry'
+import { useProjectStore } from '../stores/project'
 import type { ContainerRegistry } from '../types'
 
+const projectStore = useProjectStore()
 const items = ref<ContainerRegistry[]>([])
 const loading = ref(false)
 const saving = ref(false)
@@ -147,7 +149,7 @@ const icon = (value: string) => value === 'acr' ? 'AZ' : value === 'harbor' ? 'H
 async function load() {
   loading.value = true
   try {
-    items.value = await registryApi.list()
+    items.value = await registryApi.list(projectStore.activeProjectId || undefined)
   } finally {
     loading.value = false
   }
@@ -170,7 +172,7 @@ async function save() {
   saving.value = true
   try {
     if (editing.value) await registryApi.update(editing.value.id, form)
-    else await registryApi.create(form)
+    else await registryApi.create({ ...form, project_id: projectStore.activeProjectId || undefined })
     ElMessage.success('镜像仓库配置已保存')
     dialog.value = false
     await load()
@@ -192,7 +194,11 @@ async function remove(item: ContainerRegistry) {
   load()
 }
 
-onMounted(load)
+onMounted(async () => {
+  projectStore.init()
+  await projectStore.load()
+  await load()
+})
 </script>
 
 <style scoped>

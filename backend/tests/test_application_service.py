@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from app import create_app
 from app.extensions import db
-from app.models import Application, ApplicationEnvironment, ReleaseRecord
+from app.models import Application, ApplicationEnvironment, Project, ReleaseRecord
 from app.services.application_service import ApplicationService
 from app.utils.errors import ApiError
 
@@ -28,6 +28,9 @@ class ApplicationServiceTest(unittest.TestCase):
         self.app = create_app(TestConfig)
         self.context = self.app.app_context()
         self.context.push()
+        self.project = Project(key="default", name="Default Project")
+        db.session.add(self.project)
+        db.session.commit()
 
     def tearDown(self):
         db.session.remove()
@@ -49,19 +52,18 @@ class ApplicationServiceTest(unittest.TestCase):
         })
 
         self.assertEqual(app.language, "nodejs")
+        self.assertIsNotNone(app.project_id)
         self.assertEqual(app.application_spec["spec"]["runtime"]["framework"], "vite")
         self.assertEqual(
             app.application_spec["spec"]["build"]["image"],
             "registry.local/frontend-console:latest",
         )
         environments = ApplicationEnvironment.query.filter_by(application_id=app.id).all()
-        self.assertEqual(
-            [item.environment_name for item in environments],
-            ["dev", "test", "staging", "prod"],
-        )
+        self.assertEqual([item.environment_name for item in environments], ["dev"])
 
     def test_create_rejects_duplicate_application_name(self):
         db.session.add(Application(
+            project_id=self.project.id,
             name="payment-service",
             repo_url="https://github.com/example/payment-service.git",
             branch="main",

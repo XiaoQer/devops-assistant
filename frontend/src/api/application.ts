@@ -1,10 +1,11 @@
 import { client } from './client'
 import type {
   Application, Execution, Release, RuntimeStatus,
-  ApplicationEnvironment, ApplicationConfig,
+  ApplicationEnvironment, ApplicationConfig, DeploymentPlan,
 } from '../types'
 
 export interface CreateApplicationInput {
+  project_id: number
   name: string
   repo_url: string
   branch: string
@@ -12,10 +13,16 @@ export interface CreateApplicationInput {
 }
 
 export const applicationApi = {
-  list: () => client.get<never, Application[]>('/applications'),
+  list: (projectId?: number) => client.get<never, Application[]>('/applications', {
+    params: projectId ? { projectId } : undefined,
+  }),
   get: (id: number) => client.get<never, Application>(`/applications/${id}`),
   create: (input: CreateApplicationInput) =>
     client.post<never, Application>('/applications', input),
+  deployPlan: (
+    id: number,
+    options: { environment?: string; image_tag?: string; git_commit?: string } = {},
+  ) => client.post<never, DeploymentPlan>(`/applications/${id}/deploy/plan`, options),
   deploy: (
     id: number,
     options: { environment?: string; image_tag?: string; git_commit?: string } = {},

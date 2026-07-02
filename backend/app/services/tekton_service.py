@@ -104,6 +104,47 @@ class TektonService:
             "finished_at": status.get("completionTime"),
         }
 
+    def retry_pipeline_run(self, pipeline_run_name, namespace):
+        run = self.custom_api.get_namespaced_custom_object(
+            self.GROUP, self.VERSION, namespace, "pipelineruns", pipeline_run_name
+        )
+        status = run.get("status", {})
+        condition = next(iter(status.get("conditions", [])), {})
+        reason = condition.get("reason", "Pending")
+        state = {"True": "Succeeded", "False": "Failed"}.get(
+            condition.get("status"), reason
+        )
+        if state not in {"Failed", "Cancelled"}:
+            raise ValueError("只有失败或取消的 PipelineRun 才能重试")
+
+        metadata = run.get("metadata", {})
+        spec = run.get("spec", {})
+        body = {
+            "apiVersion": run.get("apiVersion", f"{self.GROUP}/{self.VERSION}"),
+            "kind": run.get("kind", "PipelineRun"),
+            "metadata": {
+                "generateName": metadata.get("generateName")
+                or f"{metadata.get('labels', {}).get('app.kubernetes.io/name', 'pipeline')}-retry-",
+                "namespace": namespace,
+                "labels": {
+                    **metadata.get("labels", {}),
+                    "aegis.dev/retry-of": pipeline_run_name,
+                },
+                "annotations": {
+                    **metadata.get("annotations", {}),
+                    "aegis.dev/retry-of": pipeline_run_name,
+                },
+            },
+            "spec": spec,
+        }
+        result = self.custom_api.create_namespaced_custom_object(
+            self.GROUP, self.VERSION, namespace, "pipelineruns", body
+        )
+        return {
+            "name": result["metadata"]["name"],
+            "retried_from": pipeline_run_name,
+        }
+
     def list_pipeline_runs(self, namespace, limit=200):
         result = self.custom_api.list_namespaced_custom_object(
             self.GROUP, self.VERSION, namespace, "pipelineruns", limit=limit

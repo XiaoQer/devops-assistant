@@ -21,6 +21,12 @@
         <span class="soft-pill">AI Native Platform</span>
         <h3>用更少点击完成软件交付</h3>
         <p>把应用、发布、审批与运行状态组织成统一的软件工作流，而不是分散的运维页面。</p>
+        <div class="project-switcher">
+          <label>Current project</label>
+          <el-select v-model="activeProjectId" placeholder="选择项目" @change="handleProjectChange">
+            <el-option v-for="project in projectStore.items" :key="project.id" :label="project.name" :value="project.id" />
+          </el-select>
+        </div>
       </div>
 
       <div class="nav-group">
@@ -84,9 +90,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, shallowRef } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useCommandStore } from '@/stores/command'
 import { useUiStore } from '@/stores/ui'
+import { useProjectStore } from '@/stores/project'
 import IconDashboard from '../components/icons/IconDashboard.vue'
 import IconApplication from '../components/icons/IconApplication.vue'
 import IconPipeline from '../components/icons/IconPipeline.vue'
@@ -97,10 +104,13 @@ import IconTheme from '@/components/icons/IconTheme.vue'
 
 const uiStore = useUiStore()
 const commandStore = useCommandStore()
+const projectStore = useProjectStore()
 const route = useRoute()
+const router = useRouter()
 
 const nav = shallowRef([
   { name: 'Overview', path: '/dashboard', icon: IconDashboard },
+  { name: 'Projects', path: '/projects', icon: IconApplication },
   { name: 'Applications', path: '/applications', icon: IconApplication },
   { name: 'Pipelines', path: '/pipelines', icon: IconPipeline },
   { name: 'Releases', path: '/releases', icon: IconRelease },
@@ -110,6 +120,7 @@ const nav = shallowRef([
 const currentTitle = computed(() => {
   const match = nav.value.find(item => route.path.startsWith(item.path))
   if (route.path.startsWith('/settings/registries')) return 'Registry settings'
+  if (route.path.startsWith('/projects/')) return 'Project workspace'
   if (route.path.startsWith('/applications/new')) return 'Create application'
   if (route.path.startsWith('/applications/')) return 'Application workspace'
   if (route.path.startsWith('/pipelines/')) return 'Pipeline detail'
@@ -118,6 +129,7 @@ const currentTitle = computed(() => {
 
 const currentSection = computed(() => {
   if (route.path.startsWith('/settings')) return 'Platform'
+  if (route.path.startsWith('/projects')) return 'Project'
   if (route.path.startsWith('/applications')) return 'Software delivery'
   if (route.path.startsWith('/pipelines')) return 'Execution'
   if (route.path.startsWith('/releases')) return 'Release management'
@@ -125,8 +137,21 @@ const currentSection = computed(() => {
   return 'AI Native Software OS'
 })
 
+const activeProjectId = computed({
+  get: () => projectStore.activeProjectId,
+  set: value => projectStore.setActiveProject(value),
+})
+
+function handleProjectChange(projectId: number) {
+  projectStore.setActiveProject(projectId)
+  if (!route.path.startsWith('/projects/')) return
+  router.push(`/projects/${projectId}`)
+}
+
 onMounted(() => {
   uiStore.initUi()
+  projectStore.init()
+  projectStore.load()
 })
 </script>
 
@@ -246,6 +271,17 @@ onMounted(() => {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.65;
+}
+
+.project-switcher {
+  margin-top: 16px;
+}
+
+.project-switcher label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .nav-group {

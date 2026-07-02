@@ -6,6 +6,9 @@ class CustomApi:
         self.args = args
         return {"metadata": {"name": "demo-run-abc"}}
 
+    def get_namespaced_custom_object(self, *args):
+        return self.run
+
 
 class Kubernetes:
     def __init__(self):
@@ -55,3 +58,47 @@ def test_configured_registry_secret_is_required():
     secret = body["spec"]["taskRunTemplate"]["podTemplate"]["volumes"][0]["secret"]
     assert secret["secretName"] == "aegis-registry-credentials"
     assert secret["optional"] is False
+
+
+def test_retry_pipeline_run_reuses_existing_spec_with_retry_label():
+    kubernetes = Kubernetes()
+    kubernetes.custom_api.run = {
+        "apiVersion": "tekton.dev/v1",
+        "kind": "PipelineRun",
+        "metadata": {
+            "name": "demo-run-failed",
+            "generateName": "demo-run-",
+            "labels": {"app.kubernetes.io/name": "demo"},
+            "annotations": {"example": "1"},
+        },
+        "spec": {
+            "pipelineRef": {"name": "java-maven-kaniko-deploy"},
+            "params": [{"name": "app_name", "value": "demo"}],
+        },
+        "status": {"conditions": [{"status": "False", "reason": "Failed"}]},
+    }
+
+    retried = TektonService(kubernetes).retry_pipeline_run("demo-run-failed", "devops-platform")
+    body = kubernetes.custom_api.args[-1]
+
+    assert retried["name"] == "demo-run-abc"
+    assert retried["retried_from"] == "demo-run-failed"
+    assert body["metadata"]["generateName"] == "demo-run-"
+    assert body["metadata"]["labels"]["aegis.dev/retry-of"] == "demo-run-failed"
+    assert body["spec"]["pipelineRef"]["name"] == "java-maven-kaniko-deploy"
+
+
+def test_retry_pipeline_run_rejects_non_failed_runs():
+    kubernetes = Kubernetes()
+    kubernetes.custom_api.run = {
+        "metadata": {"name": "demo-run-success", "labels": {"app.kubernetes.io/name": "demo"}},
+        "spec": {"pipelineRef": {"name": "java-maven-kaniko-deploy"}},
+        "status": {"conditions": [{"status": "True", "reason": "Succeeded"}]},
+    }
+
+    try:
+        TektonService(kubernetes).retry_pipeline_run("demo-run-success", "devops-platform")
+        raise AssertionError("expected retry to be rejected for succeeded runs")
+    except ValueError as exc:
+        assert str(exc) == "只有失败或取消的 PipelineRun 才能重试"
+

@@ -7,7 +7,7 @@ class Application(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=True)
-    name = db.Column(db.String(120), nullable=False, unique=True)
+    name = db.Column(db.String(120), nullable=False)
     repo_url = db.Column(db.String(500), nullable=False)
     branch = db.Column(db.String(120), default="main", nullable=False)
     language = db.Column(db.String(30), default="unknown")
@@ -61,6 +61,7 @@ class Application(db.Model):
         data = {
             "id": self.id,
             "project_id": self.project_id,
+            "project_name": self.project.name if self.project else None,
             "name": self.name,
             "repo_url": self.repo_url,
             "branch": self.branch,

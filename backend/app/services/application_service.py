@@ -10,6 +10,7 @@ from .configuration_service import ConfigurationService
 from .kubernetes_service import KubernetesService
 from .environment_service import EnvironmentService
 from .registry_service import RegistryService
+from .project_service import ProjectService
 
 
 class ApplicationService:
@@ -24,17 +25,25 @@ class ApplicationService:
         missing = [key for key in required if not payload.get(key)]
         if missing:
             raise ApiError(f"缺少必填字段: {', '.join(missing)}")
-        if Application.query.filter_by(name=payload["name"]).first():
+        project_id = payload.get("project_id")
+        if not project_id:
+            project_id = ProjectService().ensure_default_project().id
+        existing = Application.query.filter_by(
+            project_id=project_id,
+            name=payload["name"],
+        ).first()
+        if existing:
             raise ApiError("应用名称已存在", 409, "APPLICATION_EXISTS")
-
         analysis = RepoAnalyzerService().analyze(
             payload["repo_url"], payload.get("branch", "main")
         )
+        registry = RegistryService().get_default(project_id)
         image_name = payload.get("image_name") or (
-            f"{current_app.config['DEFAULT_IMAGE_REGISTRY']}/{payload['name']}"
+            f"{registry.image_prefix}/{payload['name']}"
+            if registry else f"{current_app.config['DEFAULT_IMAGE_REGISTRY']}/{payload['name']}"
         )
         app = Application(
-            project_id=payload.get("project_id"),
+            project_id=project_id,
             name=payload["name"],
             repo_url=payload["repo_url"],
             branch=payload.get("branch", "main"),
@@ -74,7 +83,7 @@ class ApplicationService:
         image_tag = payload.get("image_tag", app.image_tag)
         deploy_namespace = payload.get("namespace", app.namespace)
         image_name = payload.get("image_name", app.image_name)
-        registry = RegistryService().get_default()
+        registry = RegistryService().get_default(app.project_id)
         deployment_config = {
             "replicas": 1,
             "cpu_request": "100m",

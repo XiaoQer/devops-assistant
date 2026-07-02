@@ -18,14 +18,15 @@ def get_registry(registry_id):
 
 @bp.get("")
 def list_registries():
-    return success([item.to_dict() for item in RegistryService().list()])
+    project_id = request.args.get("projectId", type=int)
+    return success([item.to_dict() for item in RegistryService().list(project_id)])
 
 
 @bp.post("")
 def create_registry():
     payload = json_object(request.get_json(silent=True), required=True)
     require_fields(payload, "name", "server")
-    item = RegistryService().create(payload)
+    item = RegistryService().create(payload, payload.get("project_id"))
     return success(item.to_dict(), "镜像仓库已创建", 201)
 
 

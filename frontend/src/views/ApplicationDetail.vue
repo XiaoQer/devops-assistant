@@ -4,10 +4,10 @@
     <template v-else-if="app">
       <PageHeader eyebrow="Application workspace" :title="app.name" :description="`${shortRepo(app.repo_url)} · ${app.branch}`">
         <el-select v-model="environment" style="width: 132px">
-          <el-option v-for="env in environments" :key="env" :label="env.toUpperCase()" :value="env" />
+          <el-option v-for="env in environmentOptions" :key="env" :label="env.toUpperCase()" :value="env" />
         </el-select>
         <el-button :loading="loadingRuntime" @click="loadRuntime">刷新状态</el-button>
-        <el-button type="primary" :loading="deploying" @click="deploy">发布应用</el-button>
+        <el-button type="primary" :loading="deploying" @click="openDeployPlan">发布应用</el-button>
       </PageHeader>
 
       <section class="surface hero-card glass-card">
@@ -49,9 +49,87 @@
         <el-button disabled>Analyze this application</el-button>
       </section>
 
+      <el-dialog v-model="deployDialog" title="Deployment plan" width="780px">
+        <el-skeleton :loading="loadingPlan" animated :rows="8">
+          <template v-if="deployDialog">
+            <section class="deploy-plan-stack">
+              <div class="deploy-selector surface-soft-card">
+                <label>Deploy target environment</label>
+                <el-select v-model="deployEnvironment" placeholder="请选择要部署的环境" style="width: 100%" @change="loadDeployPlan">
+                  <el-option v-for="env in environmentOptions" :key="env" :label="env.toUpperCase()" :value="env" />
+                </el-select>
+                <p>查看页面状态使用的环境，不会自动作为发布目标。发布前必须在这里显式确认一次。</p>
+              </div>
+
+              <EmptyState
+                v-if="!deployEnvironment && !loadingPlan"
+                title="先选择发布环境"
+                description="例如 dev / test / staging / prod。选择后平台会生成对应的发布计划与风险检查结果。"
+                icon="⇢"
+              />
+
+              <template v-else-if="deployPlan">
+              <div class="deploy-summary" :class="`risk-${deployPlan.risk_level}`">
+                <div>
+                  <strong>{{ riskLabel(deployPlan.risk_level) }}</strong>
+                  <p>{{ deployPlan.summary }}</p>
+                </div>
+                <span class="soft-pill">{{ environment.toUpperCase() }}</span>
+              </div>
+
+              <div class="deploy-target-grid">
+                <article>
+                  <label>Target namespace</label>
+                  <b>{{ deployPlan.target.namespace }}</b>
+                </article>
+                <article>
+                  <label>Image</label>
+                  <b>{{ deployPlan.target.image_name }}:{{ deployPlan.target.image_tag }}</b>
+                </article>
+                <article>
+                  <label>Pipeline</label>
+                  <b>{{ deployPlan.target.pipeline_name || 'Unavailable' }}</b>
+                </article>
+                <article>
+                  <label>Delivery mode</label>
+                  <b>{{ deployPlan.target.approval_required ? 'Approval required' : 'Direct delivery' }}</b>
+                </article>
+              </div>
+
+              <div class="plan-check-list">
+                <article
+                  v-for="check in deployPlan.checks"
+                  :key="check.name"
+                  class="plan-check-item"
+                  :class="`status-${check.status}`"
+                >
+                  <div class="plan-check-head">
+                    <strong>{{ check.summary }}</strong>
+                    <span>{{ check.status.toUpperCase() }}</span>
+                  </div>
+                  <p>{{ check.detail }}</p>
+                </article>
+              </div>
+              </template>
+            </section>
+          </template>
+        </el-skeleton>
+        <template #footer>
+          <el-button @click="deployDialog = false">取消</el-button>
+          <el-button
+            type="primary"
+            :disabled="!deployEnvironment || !deployPlan?.can_deploy || loadingPlan"
+            :loading="deploying"
+            @click="confirmDeploy"
+          >
+            {{ deployPlan?.target.approval_required ? '提交审批' : '确认发布' }}
+          </el-button>
+        </template>
+      </el-dialog>
+
       <el-tabs v-model="activeTab" class="detail-tabs">
         <el-tab-pane label="Overview" name="overview"><ApplicationOverview :application="app" /></el-tab-pane>
-        <el-tab-pane label="Environments" name="environments"><EnvironmentCenter :application-id="app.id" /></el-tab-pane>
+        <el-tab-pane label="Environments" name="environments"><EnvironmentCenter :application-id="app.id" :project-id="app.project_id || 0" /></el-tab-pane>
         <el-tab-pane label="Pipeline" name="pipeline"><section class="surface tab-card"><div class="surface-header"><div><h3>Pipeline executions</h3><p>最近 Tekton PipelineRun</p></div></div><el-table :data="executions"><el-table-column prop="pipeline_run_name" label="PipelineRun" min-width="280" /><el-table-column label="状态" width="130"><template #default="{row}"><StatusBadge :status="row.status" /></template></el-table-column><el-table-column label="创建时间" width="180"><template #default="{row}">{{ format(row.created_at) }}</template></el-table-column><el-table-column label="操作" width="100"><template #default="{row}"><el-button link @click="$router.push(`/pipelines/${row.pipeline_run_name}`)">详情</el-button></template></el-table-column></el-table><EmptyState v-if="!executions.length" title="暂无 Pipeline 执行" description="点击发布应用以启动第一条流水线。" /></section></el-tab-pane>
         <el-tab-pane label="Release History" name="releases"><ReleaseHistoryTable :releases="releases" :rollback-id="rollbackId" @logs="openLogs" @rollback="rollback" /></el-tab-pane>
         <el-tab-pane label="Runtime Status" name="runtime"><el-skeleton :loading="loadingRuntime" animated :rows="8"><RuntimeStatusPanel :status="runtime" :application-id="app.id" :environment="environment" /></el-skeleton></el-tab-pane>
@@ -64,11 +142,18 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { applicationApi } from '../api/application'
-import type { Application, Execution, Release, RuntimeStatus } from '../types'
+import type {
+  Application,
+  ApplicationEnvironment,
+  DeploymentPlan,
+  Execution,
+  Release,
+  RuntimeStatus,
+} from '../types'
 import PageHeader from '../components/common/PageHeader.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import EmptyState from '../components/common/EmptyState.vue'
@@ -84,13 +169,18 @@ const app = ref<Application>()
 const executions = ref<Execution[]>([])
 const releases = ref<Release[]>([])
 const runtime = ref<RuntimeStatus>()
+const environmentRecords = ref<ApplicationEnvironment[]>([])
 const activeTab = ref('overview')
 const environment = ref('dev')
 const loadingApp = ref(true)
 const loadingRuntime = ref(false)
 const deploying = ref(false)
+const deployDialog = ref(false)
+const loadingPlan = ref(false)
+const deployEnvironment = ref('')
+const deployPlan = ref<DeploymentPlan>()
 const rollbackId = ref(0)
-const environments = ['dev', 'test', 'staging', 'prod']
+const environmentOptions = computed(() => environmentRecords.value.map(item => item.environment_name))
 
 const shortRepo = (url: string) => url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '')
 const format = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false })
@@ -99,11 +189,18 @@ async function load() {
   loadingApp.value = true
   try {
     const id = Number(route.params.id)
-    ;[app.value, executions.value, releases.value] = await Promise.all([
+    const [application, executionItems, envItems] = await Promise.all([
       applicationApi.get(id),
       applicationApi.executions(id),
-      applicationApi.releases(id, environment.value),
+      applicationApi.environments(id),
     ])
+    app.value = application
+    executions.value = executionItems
+    environmentRecords.value = envItems
+    if (!environmentOptions.value.includes(environment.value)) {
+      environment.value = environmentOptions.value[0] || 'dev'
+    }
+    releases.value = await applicationApi.releases(id, environment.value)
     await loadRuntime()
   } catch (error) {
     ElMessage.error((error as Error).message)
@@ -124,16 +221,44 @@ async function loadRuntime() {
 }
 
 async function loadEnvironment() {
+  if (!app.value) return
   ;[releases.value] = await Promise.all([
     applicationApi.releases(Number(route.params.id), environment.value),
     loadRuntime(),
   ])
 }
 
-async function deploy() {
+async function openDeployPlan() {
+  deployDialog.value = true
+  deployEnvironment.value = ''
+  deployPlan.value = undefined
+}
+
+async function loadDeployPlan() {
+  if (!deployEnvironment.value) {
+    deployPlan.value = undefined
+    return
+  }
+  loadingPlan.value = true
+  deployPlan.value = undefined
+  try {
+    deployPlan.value = await applicationApi.deployPlan(Number(route.params.id), {
+      environment: deployEnvironment.value,
+    })
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    loadingPlan.value = false
+  }
+}
+
+async function confirmDeploy() {
+  if (!deployEnvironment.value || !deployPlan.value?.can_deploy) return
   deploying.value = true
   try {
-    const run = await applicationApi.deploy(Number(route.params.id), { environment: environment.value })
+    const run = await applicationApi.deploy(Number(route.params.id), { environment: deployEnvironment.value })
+    deployDialog.value = false
+    environment.value = deployEnvironment.value
     if (run.approval_required) {
       ElMessage.success('Production 发布审批已提交')
       router.push('/approvals')
@@ -146,6 +271,14 @@ async function deploy() {
   } finally {
     deploying.value = false
   }
+}
+
+function riskLabel(level: DeploymentPlan['risk_level']) {
+  return {
+    low: 'Low risk',
+    medium: 'Needs attention',
+    high: 'High risk / gated',
+  }[level]
 }
 
 async function rollback(release: Release) {
@@ -170,7 +303,9 @@ function openLogs(release: Release) {
   if (release.pipeline_run_name) router.push(`/pipelines/${release.pipeline_run_name}`)
 }
 
-watch(environment, loadEnvironment)
+watch(environment, () => {
+  if (app.value) loadEnvironment()
+})
 onMounted(load)
 </script>
 
@@ -284,6 +419,134 @@ onMounted(load)
   line-height: 1.7;
 }
 
+.deploy-plan-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.deploy-selector {
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border-soft);
+}
+
+.deploy-selector label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.deploy-selector p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.deploy-summary {
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border-soft);
+}
+
+.deploy-summary strong,
+.deploy-summary p {
+  display: block;
+}
+
+.deploy-summary strong {
+  margin-bottom: 6px;
+}
+
+.deploy-summary p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.deploy-summary.risk-low {
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.deploy-summary.risk-medium {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.deploy-summary.risk-high {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.deploy-target-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.deploy-target-grid article {
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+}
+
+.deploy-target-grid label,
+.deploy-target-grid b {
+  display: block;
+}
+
+.deploy-target-grid label {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.deploy-target-grid b {
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.plan-check-list {
+  display: grid;
+  gap: 12px;
+}
+
+.plan-check-item {
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+}
+
+.plan-check-item.status-pass {
+  border-color: rgba(34, 197, 94, 0.22);
+}
+
+.plan-check-item.status-warn {
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.plan-check-item.status-blocked {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.plan-check-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.plan-check-head span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.plan-check-item p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
 .detail-tabs :deep(.el-tabs__header) {
   margin-bottom: 16px;
 }
@@ -295,6 +558,10 @@ onMounted(load)
 
   .hero-main {
     flex-direction: column;
+  }
+
+  .deploy-target-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -13,27 +13,38 @@ from app.utils.errors import ApiError
 class RegistryService:
     PROVIDERS = {"acr", "harbor", "dockerhub", "ecr", "gcr", "generic"}
 
-    def list(self):
-        return ContainerRegistry.query.order_by(
+    def list(self, project_id=None):
+        query = ContainerRegistry.query
+        if project_id is not None:
+            query = query.filter_by(project_id=project_id)
+        return query.order_by(
             ContainerRegistry.is_default.desc(), ContainerRegistry.name
         ).all()
 
-    def get_default(self):
+    def get_default(self, project_id=None):
+        if project_id is not None:
+            scoped = ContainerRegistry.query.filter_by(
+                project_id=project_id, is_default=True, is_active=True
+            ).first()
+            if scoped:
+                return scoped
         return ContainerRegistry.query.filter_by(
-            is_default=True, is_active=True
+            project_id=None, is_default=True, is_active=True
         ).first()
 
-    def create(self, payload):
+    def create(self, payload, project_id=None):
         values = self._validated(payload)
-        if ContainerRegistry.query.filter_by(name=values["name"]).first():
+        if ContainerRegistry.query.filter_by(
+            project_id=project_id, name=values["name"]
+        ).first():
             raise ApiError("镜像仓库名称已存在", 409, "REGISTRY_EXISTS")
-        item = ContainerRegistry(**values)
+        item = ContainerRegistry(project_id=project_id, **values)
         if payload.get("password"):
             item.encrypted_password = self._encrypt(payload["password"])
         db.session.add(item)
         if item.is_default:
-            self._clear_default()
-        elif not self.get_default():
+            self._clear_default(project_id)
+        elif not self.get_default(project_id):
             item.is_default = True
         db.session.commit()
         return item
@@ -48,16 +59,19 @@ class RegistryService:
             item.encrypted_password = None
             item.username = None
         if item.is_default:
-            self._clear_default(item.id)
+            self._clear_default(item.project_id, item.id)
         db.session.commit()
         return item
 
     def delete(self, item):
         was_default = item.is_default
+        project_id = item.project_id
         db.session.delete(item)
         db.session.flush()
         if was_default:
-            replacement = ContainerRegistry.query.filter_by(is_active=True).first()
+            replacement = ContainerRegistry.query.filter_by(
+                project_id=project_id, is_active=True
+            ).first()
             if replacement:
                 replacement.is_default = True
         db.session.commit()
@@ -65,7 +79,7 @@ class RegistryService:
     def set_default(self, item):
         if not item.is_active:
             raise ApiError("停用的镜像仓库不能设为默认")
-        self._clear_default(item.id)
+        self._clear_default(item.project_id, item.id)
         item.is_default = True
         db.session.commit()
         return item
@@ -125,8 +139,11 @@ class RegistryService:
             )),
         }
 
-    def _clear_default(self, exclude_id=None):
-        query = ContainerRegistry.query.filter_by(is_default=True)
+    def _clear_default(self, project_id=None, exclude_id=None):
+        query = ContainerRegistry.query.filter_by(
+            project_id=project_id,
+            is_default=True,
+        )
         if exclude_id:
             query = query.filter(ContainerRegistry.id != exclude_id)
         query.update({"is_default": False}, synchronize_session=False)

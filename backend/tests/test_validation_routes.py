@@ -97,6 +97,22 @@ class RouteValidationTest(unittest.TestCase):
         self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
         self.assertEqual(body["error"]["details"]["fields"], ["name", "server"])
 
+    def test_deploy_plan_requires_explicit_environment(self):
+        response = self.client.post("/api/applications/1/deploy/plan", json={})
+
+        self.assertEqual(response.status_code, 400)
+        body = response.get_json()
+        self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(body["error"]["details"]["field"], "environment")
+
+    def test_deploy_requires_explicit_environment(self):
+        response = self.client.post("/api/applications/1/deploy", json={})
+
+        self.assertEqual(response.status_code, 400)
+        body = response.get_json()
+        self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(body["error"]["details"]["field"], "environment")
+
 
 if __name__ == "__main__":
     unittest.main()

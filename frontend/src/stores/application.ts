@@ -1,13 +1,18 @@
 import { defineStore } from 'pinia'
 import { applicationApi } from '../api/application'
 import type { Application } from '../types'
+import { useProjectStore } from './project'
 
 export const useApplicationStore = defineStore('applications', {
   state: () => ({ items: [] as Application[], loading: false }),
   actions: {
-    async load() {
+    async load(projectId?: number) {
+      const projectStore = useProjectStore()
       this.loading = true
-      try { this.items = await applicationApi.list() }
+      try {
+        const activeProjectId = projectId ?? projectStore.activeProjectId
+        this.items = await applicationApi.list(activeProjectId || undefined)
+      }
       finally { this.loading = false }
     },
   },

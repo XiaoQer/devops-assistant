@@ -2,6 +2,7 @@ from flask import Blueprint, request
 
 from app.models import Application, ApplicationEnvironment, ReleaseRecord
 from app.services.application_service import ApplicationService
+from app.services.deployment_plan_service import DeploymentPlanService
 from app.services.kubernetes_service import KubernetesService
 from app.services.release_service import ReleaseService
 from app.services.approval_service import ApprovalService
@@ -27,7 +28,11 @@ def get_application(app_id):
 
 @bp.get("")
 def list_applications():
-    apps = Application.query.order_by(Application.created_at.desc()).all()
+    query = Application.query
+    project_id = request.args.get("projectId", type=int)
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    apps = query.order_by(Application.created_at.desc()).all()
     return success([app.to_dict(include_spec=False) for app in apps])
 
 
@@ -48,7 +53,16 @@ def application_detail(app_id):
 def deploy_application(app_id):
     payload = json_object(request.get_json(silent=True))
     app = get_application(app_id)
-    environment_name = require_string(payload, "environment") if "environment" in payload else "dev"
+    environment_name = require_string(payload, "environment")
+    payload["environment"] = environment_name
+    plan = DeploymentPlanService().build_plan(app, payload)
+    if not plan["can_deploy"]:
+        raise ApiError(
+            "发布前检查未通过",
+            409,
+            "DEPLOYMENT_PRECHECK_FAILED",
+            plan,
+        )
     environment = ApplicationEnvironment.query.filter_by(
         application_id=app.id, environment_name=environment_name
     ).first()
@@ -72,6 +86,14 @@ def deploy_application(app_id):
     data = execution.to_dict()
     data["release"] = release.to_dict()
     return success(data, "PipelineRun 已创建", 201)
+
+
+@bp.post("/<int:app_id>/deploy/plan")
+def deployment_plan(app_id):
+    payload = json_object(request.get_json(silent=True))
+    app = get_application(app_id)
+    payload["environment"] = require_string(payload, "environment")
+    return success(DeploymentPlanService().build_plan(app, payload), "发布计划生成完成")
 
 
 @bp.get("/<int:app_id>/executions")

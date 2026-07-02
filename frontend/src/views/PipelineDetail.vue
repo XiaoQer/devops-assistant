@@ -2,6 +2,7 @@
   <div class="page-content page-stack">
     <PageHeader eyebrow="Pipeline run" :title="name" description="按执行链路、任务状态与日志上下文组织问题定位体验。">
       <el-button :loading="loading" @click="refresh">刷新</el-button>
+      <el-button type="warning" :loading="retrying" :disabled="!canRetry" @click="retryRun">重试执行</el-button>
       <el-button type="primary" :disabled="details?.status !== 'Failed'" @click="analyze">✦ AI 分析失败</el-button>
     </PageHeader>
 
@@ -71,7 +72,7 @@
               <StatusBadge :status="task.status" />
             </button>
           </aside>
-          <TaskRunLogViewer :task="selectedTask" @analyze="analyze" />
+          <TaskRunLogViewer :task="selectedTask" @analyze="analyze" @retry="retryRun" />
         </div>
       </template>
       <EmptyState v-else title="PipelineRun 不可用" description="无法读取该流水线，可能已被清理或后端连接异常。" />
@@ -94,7 +95,9 @@ const name = String(useRoute().params.name)
 const details = ref<Awaited<ReturnType<typeof pipelineApi.logs>>>()
 const selectedTask = ref<any>()
 const loading = ref(false)
+const retrying = ref(false)
 let timer: number | undefined
+const canRetry = computed(() => ['Failed', 'Cancelled'].includes(details.value?.status || ''))
 
 const format = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
 const duration = computed(() => details.value?.started_at && details.value?.finished_at
@@ -118,6 +121,20 @@ async function refresh() {
 
 function analyze() {
   ElMessage.info('AI 失败分析将在下一阶段接入模型服务')
+}
+
+async function retryRun() {
+  if (!canRetry.value || retrying.value) return
+  retrying.value = true
+  try {
+    const result = await pipelineApi.retry(name)
+    ElMessage.success(`已提交重试执行 ${result.name}`)
+    window.location.href = `/pipelines/${result.name}`
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    retrying.value = false
+  }
 }
 
 onMounted(async () => {

@@ -57,6 +57,7 @@ export interface RuntimeStatus {
 export interface ApplicationEnvironment {
   id: number
   application_id: number
+  kubernetes_cluster_id?: number | null
   environment_name: string
   display_name?: string
   cluster_name: string
@@ -75,6 +76,45 @@ export interface ApplicationEnvironment {
   max_surge: string
   approval_required: boolean
   status: string
+  updated_at: string
+}
+
+export interface Project {
+  id: number
+  key: string
+  name: string
+  description?: string
+  applications_count?: number
+  members_count?: number
+  clusters_count?: number
+  registries_count?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectMember {
+  id: number
+  project_id: number
+  name: string
+  email: string
+  role: 'owner' | 'admin' | 'developer' | 'viewer'
+  title?: string
+  status: 'active' | 'invited' | string
+  created_at: string
+  updated_at: string
+}
+
+export interface KubernetesCluster {
+  id: number
+  project_id: number
+  name: string
+  description?: string
+  kube_context: string
+  namespace_prefix?: string
+  api_server?: string
+  is_default: boolean
+  is_active: boolean
+  created_at: string
   updated_at: string
 }
 
@@ -112,9 +152,36 @@ export interface Approval {
   rejected_at?: string
 }
 
+export interface DeploymentCheck {
+  name: string
+  status: 'pass' | 'warn' | 'blocked'
+  summary: string
+  detail: string
+}
+
+export interface DeploymentPlan {
+  can_deploy: boolean
+  risk_level: 'low' | 'medium' | 'high'
+  summary: string
+  target: {
+    application_id: number
+    application_name: string
+    environment: string
+    namespace: string
+    image_name: string
+    image_tag: string
+    pipeline_name?: string
+    approval_required: boolean
+  }
+  checks: DeploymentCheck[]
+  blocked_checks: string[]
+  warning_checks: string[]
+}
+
 export interface Application {
   id: number
   project_id?: number
+  project_name?: string
   name: string
   repo_url: string
   branch: string
@@ -132,6 +199,8 @@ export interface Application {
 
 export interface ContainerRegistry {
   id: number
+  project_id?: number | null
+  project_name?: string | null
   name: string
   provider: 'acr' | 'harbor' | 'dockerhub' | 'ecr' | 'gcr' | 'generic'
   server: string

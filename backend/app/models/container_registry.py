@@ -6,7 +6,8 @@ class ContainerRegistry(db.Model):
     __tablename__ = "container_registries"
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False, unique=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=True, index=True)
+    name = db.Column(db.String(120), nullable=False)
     provider = db.Column(db.String(30), default="generic", nullable=False)
     server = db.Column(db.String(300), nullable=False)
     namespace = db.Column(db.String(200))
@@ -23,6 +24,8 @@ class ContainerRegistry(db.Model):
         db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
     )
 
+    project = db.relationship("Project", back_populates="registries")
+
     @property
     def image_prefix(self):
         parts = [self.server.rstrip("/")]
@@ -33,6 +36,8 @@ class ContainerRegistry(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
+            "project_id": self.project_id,
+            "project_name": self.project.name if self.project else None,
             "name": self.name,
             "provider": self.provider,
             "server": self.server,

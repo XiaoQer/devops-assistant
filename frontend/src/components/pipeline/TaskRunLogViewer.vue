@@ -7,6 +7,7 @@
       </div>
       <div class="viewer-actions">
         <el-button size="small" @click="$emit('analyze')" :disabled="task?.status !== 'Failed'">✦ AI 分析</el-button>
+        <el-button size="small" @click="$emit('retry')" :disabled="task?.status !== 'Failed'">重试执行</el-button>
         <el-button size="small" @click="copy" :disabled="!selectedStep">复制日志</el-button>
       </div>
     </header>
@@ -24,7 +25,7 @@ import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps<{ task?: any }>()
-defineEmits<{ analyze: [] }>()
+defineEmits<{ analyze: []; retry: [] }>()
 
 const selectedStep = ref<any>()
 

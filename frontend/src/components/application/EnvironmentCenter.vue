@@ -74,6 +74,11 @@
         <div class="form-grid">
           <el-form-item label="环境标识"><el-input v-model="form.environment_name" :disabled="!!editing?.id" placeholder="qa" /></el-form-item>
           <el-form-item label="显示名称"><el-input v-model="form.display_name" placeholder="QA" /></el-form-item>
+            <el-form-item label="Kubernetes 集群">
+              <el-select v-model="form.kubernetes_cluster_id" clearable placeholder="选择部署集群">
+                <el-option v-for="cluster in clusters" :key="cluster.id" :label="cluster.name" :value="cluster.id" />
+              </el-select>
+            </el-form-item>
           <el-form-item label="Kubernetes Namespace"><el-input v-model="form.namespace" /></el-form-item>
           <el-form-item label="副本数"><el-input-number v-model="form.replicas" :min="1" :max="100" /></el-form-item>
           <el-form-item label="CPU Request / Limit"><div class="inline"><el-input v-model="form.cpu_request" /><el-input v-model="form.cpu_limit" /></div></el-form-item>
@@ -114,12 +119,14 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { applicationApi } from '../../api/application'
-import type { ApplicationEnvironment } from '../../types'
+import { projectApi } from '../../api/project'
+import type { ApplicationEnvironment, KubernetesCluster } from '../../types'
 import StatusBadge from '../common/StatusBadge.vue'
 import EmptyState from '../common/EmptyState.vue'
 
-const props = defineProps<{ applicationId: number }>()
+const props = defineProps<{ applicationId: number; projectId: number }>()
 const environments = ref<ApplicationEnvironment[]>([])
+const clusters = ref<KubernetesCluster[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const dialog = ref(false)
@@ -133,6 +140,7 @@ const strategies = ['RollingUpdate', 'Recreate']
 const defaults = {
   environment_name: '',
   display_name: '',
+  kubernetes_cluster_id: undefined,
   namespace: '',
   replicas: 1,
   cpu_request: '100m',
@@ -153,7 +161,12 @@ function formatTime(value: string) {
 async function load() {
   loading.value = true
   try {
-    environments.value = await applicationApi.environments(props.applicationId)
+    const [environmentItems, clusterItems] = await Promise.all([
+      applicationApi.environments(props.applicationId),
+      props.projectId ? projectApi.clusters(props.projectId) : Promise.resolve([]),
+    ])
+    environments.value = environmentItems
+    clusters.value = clusterItems
   } finally {
     loading.value = false
   }

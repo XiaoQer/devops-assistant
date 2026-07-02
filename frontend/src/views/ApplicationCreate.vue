@@ -28,6 +28,11 @@
         </div>
         <div class="form-body">
           <el-form label-position="top" :model="form">
+            <el-form-item label="所属 Project">
+              <el-select v-model="form.project_id" placeholder="选择项目">
+                <el-option v-for="project in projects" :key="project.id" :label="project.name" :value="project.id" />
+              </el-select>
+            </el-form-item>
             <el-form-item label="应用名称">
               <el-input v-model="form.name" placeholder="order-api" />
             </el-form-item>
@@ -75,20 +80,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import yamlLib from 'js-yaml'
 import { applicationApi } from '../api/application'
-import type { Application } from '../types'
+import { projectApi } from '../api/project'
+import type { Application, Project } from '../types'
 import PageHeader from '../components/common/PageHeader.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 
 const router = useRouter()
-const form = reactive({ name: '', repo_url: '', branch: 'main', namespace: 'default' })
+const route = useRoute()
+const form = reactive({ project_id: 0, name: '', repo_url: '', branch: 'main', namespace: 'default' })
 const loading = ref(false)
 const result = ref<Application>()
 const intent = ref('')
+const projects = ref<Project[]>([])
 
 const suggestions = [
   {
@@ -116,6 +124,7 @@ function applySuggestion(item: { label: string; intent: string; name: string }) 
 }
 
 async function submit() {
+  if (!form.project_id) return ElMessage.warning('请先选择所属项目')
   if (!form.name || !form.repo_url) return ElMessage.warning('请填写应用名称和仓库地址')
   loading.value = true
   try {
@@ -127,6 +136,16 @@ async function submit() {
     loading.value = false
   }
 }
+
+onMounted(async () => {
+  projects.value = await projectApi.list()
+  const selected = Number(route.query.projectId || 0)
+  if (selected && projects.value.some(item => item.id === selected)) {
+    form.project_id = selected
+  } else if (projects.value.length === 1) {
+    form.project_id = projects.value[0].id
+  }
+})
 </script>
 
 <style scoped>

@@ -11,9 +11,9 @@
           <article v-for="p in items" :key="p.id" @click="view(p)">
             <span>▦</span>
             <div class="project-copy">
-              <div class="project-title"><h3>{{p.name}}</h3><StatusBadge :status="p.status==='Active'?'Healthy':'Unknown'" :label="p.status"/></div>
+              <div class="project-title"><h3>{{p.name}}</h3><StatusBadge :status="(p.status || 'Active')==='Active'?'Healthy':'Unknown'" :label="p.status || 'Active'"/></div>
               <p>{{p.description||'Project governance workspace'}}</p>
-              <small>{{p.member_count}} Members · {{p.application_count}} Applications · {{defaultCluster(p)?.name||'No cluster'}}</small>
+              <small>{{p.members_count || p.member_count || 0}} Members · {{p.applications_count || p.application_count || 0}} Applications · {{defaultCluster(p)?.name||'No cluster'}}</small>
             </div>
             <div class="card-actions" @click.stop>
               <el-button link @click="openEdit(p)">Edit</el-button>

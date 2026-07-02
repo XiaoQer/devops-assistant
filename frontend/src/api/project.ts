@@ -12,8 +12,9 @@ export const projectApi = {
     owner_email?: string
     owner_title?: string
   }) => client.post<never, Project>('/projects', input),
-  update: (id: number, input: Partial<Pick<Project, 'name' | 'description'>>) =>
+  update: (id: number, input: Record<string, unknown>) =>
     client.patch<never, Project>(`/projects/${id}`, input),
+  remove: (id: number) => client.delete(`/projects/${id}`),
   members: (projectId: number) =>
     client.get<never, ProjectMember[]>(`/projects/${projectId}/members`),
   addMember: (projectId: number, input: Partial<ProjectMember>) =>
@@ -37,4 +38,3 @@ export const projectApi = {
   registries: (projectId: number) =>
     client.get<never, ContainerRegistry[]>('/registries', { params: { projectId } }),
 }
-

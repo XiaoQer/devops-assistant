@@ -14,6 +14,9 @@ export const useProjectStore = defineStore('projects', {
     activeProject(state): Project | undefined {
       return state.items.find((item: Project) => item.id === state.activeProjectId)
     },
+    viewerScoped(): boolean {
+      return false
+    },
   },
   actions: {
     init() {
@@ -39,4 +42,3 @@ export const useProjectStore = defineStore('projects', {
     },
   },
 })
-

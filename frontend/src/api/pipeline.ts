@@ -1,13 +1,10 @@
 import { client } from './client'
+import type { PipelineRunSummary } from '../types'
 
 export const pipelineApi = {
-  list: (params: {page:number;pageSize:number;status?:string;query?:string}) =>
+  list: (params: {page:number;pageSize:number;status?:string;query?:string;projectId?:number}) =>
     client.get<never, {
-      items:Array<{
-        name:string;namespace:string;application?:string;pipeline?:string
-        status:string;reason:string;repo_url?:string;branch?:string;image?:string
-        started_at?:string;finished_at?:string;created_at:string
-      }>
+      items:PipelineRunSummary[]
       page:number;pageSize:number;total:number
     }>('/pipelines', { params }),
   status: (name: string, namespace = 'devops-platform') =>

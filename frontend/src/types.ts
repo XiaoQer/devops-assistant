@@ -10,6 +10,8 @@ export interface Execution {
 
 export interface Release {
   id: number
+  application_id?: number
+  application_name?: string
   release_type: 'deploy' | 'rollback'
   environment: string
   git_branch: string
@@ -84,12 +86,31 @@ export interface Project {
   key: string
   name: string
   description?: string
+  status?: string
+  my_role?: string
+  last_release?: string
+  application_count?: number
+  member_count?: number
   applications_count?: number
   members_count?: number
   clusters_count?: number
   registries_count?: number
+  members?: ProjectMember[]
+  environments?: ProjectEnvironment[]
+  clusters?: KubernetesCluster[]
+  registries?: ContainerRegistry[]
   created_at: string
   updated_at: string
+}
+
+export interface ProjectEnvironment {
+  id?: number
+  environment_name: string
+  display_name?: string
+  namespace?: string
+  cluster_name?: string
+  registry_name?: string
+  approval_required?: boolean
 }
 
 export interface ProjectMember {
@@ -214,4 +235,19 @@ export interface ContainerRegistry {
   is_active: boolean
   created_at: string
   updated_at: string
+}
+
+export interface PipelineRunSummary {
+  name: string
+  namespace: string
+  application?: string
+  pipeline?: string
+  status: string
+  reason: string
+  repo_url?: string
+  branch?: string
+  image?: string
+  started_at?: string
+  finished_at?: string
+  created_at: string
 }

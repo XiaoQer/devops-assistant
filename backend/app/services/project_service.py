@@ -49,6 +49,12 @@ class ProjectService:
         db.session.commit()
         return project
 
+    def delete(self, project):
+        if project.applications or project.members or project.kubernetes_clusters or project.registries:
+            raise ApiError("仅空 Project 可以删除", 409, "PROJECT_NOT_EMPTY")
+        db.session.delete(project)
+        db.session.commit()
+
     def list_members(self, project):
         return ProjectMember.query.filter_by(project_id=project.id).order_by(ProjectMember.id).all()
 

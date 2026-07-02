@@ -44,6 +44,12 @@ def update_project(project_id):
     return success(project.to_dict(include_stats=True), "项目已更新")
 
 
+@bp.delete("/<int:project_id>")
+def delete_project(project_id):
+    project_service.delete(get_project(project_id))
+    return success(None, "项目已删除")
+
+
 @bp.get("/<int:project_id>/members")
 def list_members(project_id):
     project = get_project(project_id)
@@ -114,4 +120,3 @@ def set_default_cluster(project_id, cluster_id):
     project = get_project(project_id)
     item = cluster_service.set_default(cluster_service.get(project, cluster_id))
     return success(item.to_dict(), "默认 Kubernetes 集群已更新")
-

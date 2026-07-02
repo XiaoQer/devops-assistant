@@ -1,5 +1,5 @@
 export const PORTAL_PATH = '/portal'
-export const PROJECT_MANAGER_PATH = '/project-manager'
+export const PROJECT_MANAGER_PATH = '/project-center'
 export const DEV_CENTER_PATH = '/devcenter'
 
 export function projectManagerProjectPath(projectId: number | string) {
@@ -7,7 +7,7 @@ export function projectManagerProjectPath(projectId: number | string) {
 }
 
 export function devCenterProjectPath(projectId: number | string) {
-  return `${DEV_CENTER_PATH}/${projectId}`
+  return `${DEV_CENTER_PATH}/projects/${projectId}`
 }
 
 export function devCenterApplicationsPath(projectId: number | string) {
@@ -37,4 +37,3 @@ export function devCenterReleasesPath(projectId: number | string) {
 export function devCenterApprovalsPath(projectId: number | string) {
   return `${devCenterProjectPath(projectId)}/approvals`
 }
-

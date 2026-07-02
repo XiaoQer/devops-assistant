@@ -1,6 +1,161 @@
-<template><section class="surface table-card"><div class="surface-header"><div><h3>Release history</h3><p>构建、发布与回滚的完整审计记录</p></div><div class="tools"><el-input v-model="query" placeholder="搜索版本或 Commit" clearable/><el-select v-model="status" style="width:120px"><el-option label="全部状态" value=""/><el-option v-for="s in statuses" :key="s" :label="s" :value="s"/></el-select></div></div><el-table v-if="paged.length" :data="paged"><el-table-column label="版本" min-width="145"><template #default="{row}"><b>{{row.image_tag}}</b><small class="sub mono">{{row.git_commit?.slice(0,8)||'no commit'}}</small></template></el-table-column><el-table-column label="镜像" min-width="210"><template #default="{row}"><span class="mono image">{{row.image}}</span></template></el-table-column><el-table-column label="环境" width="90"><template #default="{row}"><span class="env">{{row.environment}}</span></template></el-table-column><el-table-column label="发布人" prop="deploy_user" width="110"/><el-table-column label="状态" width="120"><template #default="{row}"><StatusBadge :status="row.deploy_status"/></template></el-table-column><el-table-column label="时间" width="150"><template #default="{row}">{{format(row.created_at)}}</template></el-table-column><el-table-column label="操作" width="160" fixed="right"><template #default="{row}"><el-button v-if="row.pipeline_run_name" link @click="$emit('logs',row)">日志</el-button><el-button link type="danger" :loading="rollbackId===row.id" :disabled="row.deploy_status!=='Succeeded'" @click="$emit('rollback',row)">回滚</el-button></template></el-table-column></el-table><EmptyState v-else title="没有匹配的发布记录" description="调整筛选条件，或从应用详情发起一次新发布。"/><footer v-if="filtered.length>pageSize"><el-pagination v-model:current-page="page" :page-size="pageSize" layout="prev, pager, next" :total="filtered.length"/></footer></section></template>
-<script setup lang="ts">import{computed,ref}from'vue';import type{Release}from'../../types';import StatusBadge from'../common/StatusBadge.vue';import EmptyState from'../common/EmptyState.vue';const p=withDefaults(defineProps<{releases:Release[];rollbackId?:number}>(),{rollbackId:0});defineEmits<{rollback:[Release];logs:[Release]}>();const query=ref(''),status=ref(''),page=ref(1),pageSize=8,statuses=['Succeeded','Failed','Running','Pending'];const filtered=computed(()=>p.releases.filter(r=>(!status.value||r.deploy_status===status.value)&&(!query.value||`${r.image_tag}${r.git_commit}`.toLowerCase().includes(query.value.toLowerCase()))));const paged=computed(()=>filtered.value.slice((page.value-1)*pageSize,page.value*pageSize));const format=(v:string)=>new Date(v).toLocaleString('zh-CN',{hour12:false})
+<template>
+  <section class="surface history-card">
+    <div class="surface-header">
+      <div>
+        <h3>Release history</h3>
+        <p>构建、发布与回滚的完整审计记录</p>
+      </div>
+      <div class="tools">
+        <el-input v-model="query" placeholder="搜索版本或 Commit" clearable />
+        <el-select v-model="status" style="width: 130px">
+          <el-option label="全部状态" value="" />
+          <el-option v-for="s in statuses" :key="s" :label="s" :value="s" />
+        </el-select>
+      </div>
+    </div>
 
+    <div v-if="paged.length" class="history-list">
+      <article v-for="row in paged" :key="row.id" class="history-item">
+        <div class="history-line"></div>
+        <div class="history-main">
+          <div class="history-head">
+            <div>
+              <h4>{{ row.image_tag }}</h4>
+              <p class="mono">{{ row.image }}</p>
+            </div>
+            <StatusBadge :status="row.deploy_status" />
+          </div>
+          <div class="history-meta">
+            <span class="soft-pill">{{ row.environment.toUpperCase() }}</span>
+            <span class="soft-pill">{{ row.deploy_user }}</span>
+            <span class="soft-pill">{{ row.git_commit?.slice(0, 8) || 'no commit' }}</span>
+            <span class="soft-pill">{{ format(row.created_at) }}</span>
+          </div>
+          <div class="history-actions">
+            <el-button v-if="row.pipeline_run_name" link @click="$emit('logs', row)">日志</el-button>
+            <el-button link :disabled="row.deploy_status !== 'Succeeded'" :loading="rollbackId === row.id" @click="$emit('rollback', row)">回滚</el-button>
+          </div>
+        </div>
+      </article>
+    </div>
+    <EmptyState v-else title="没有匹配的发布记录" description="调整筛选条件，或从应用详情发起一次新发布。" />
+
+    <footer v-if="filtered.length > pageSize" class="pager">
+      <el-pagination v-model:current-page="page" :page-size="pageSize" layout="prev, pager, next" :total="filtered.length" />
+    </footer>
+  </section>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import type { Release } from '../../types'
+import StatusBadge from '../common/StatusBadge.vue'
+import EmptyState from '../common/EmptyState.vue'
+
+const props = withDefaults(defineProps<{ releases: Release[]; rollbackId?: number }>(), { rollbackId: 0 })
+defineEmits<{ rollback: [Release]; logs: [Release] }>()
+
+const query = ref('')
+const status = ref('')
+const page = ref(1)
+const pageSize = 8
+const statuses = ['Succeeded', 'Failed', 'Running', 'Pending']
+
+const filtered = computed(() => props.releases.filter(release => (
+  (!status.value || release.deploy_status === status.value) &&
+  (!query.value || `${release.image_tag}${release.git_commit}`.toLowerCase().includes(query.value.toLowerCase()))
+)))
+
+const paged = computed(() => filtered.value.slice((page.value - 1) * pageSize, page.value * pageSize))
+
+function format(value: string) {
+  return new Date(value).toLocaleString('zh-CN', { hour12: false })
+}
 </script>
-<style scoped>.table-card{overflow:hidden}.tools{display:flex;gap:8px}.tools .el-input{width:190px}.sub{display:block;color:var(--muted);font-size:12px;margin-top:4px}.image{color:#8993a5;font-size:13px}.env{padding:4px 7px;border:1px solid #303644;border-radius:5px;color:#a7afbd;font-size:12px;text-transform:uppercase}footer{display:flex;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--border-soft)}</style>
 
+<style scoped>
+.history-card {
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.tools {
+  display: flex;
+  gap: 10px;
+}
+
+.tools :deep(.el-input) {
+  width: 220px;
+}
+
+.history-list {
+  padding: 12px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 16px;
+}
+
+.history-line {
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--primary), transparent);
+}
+
+.history-main {
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+}
+
+.history-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-head h4 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  letter-spacing: -0.03em;
+}
+
+.history-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.history-meta,
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.history-meta {
+  margin: 16px 0 10px;
+}
+
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 24px 24px;
+}
+
+@media (max-width: 900px) {
+  .tools,
+  .history-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+</style>

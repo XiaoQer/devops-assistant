@@ -1,8 +1,66 @@
-<template><span class="status-badge" :class="tone"><i/>{{ label || status }}</span></template>
+<template>
+  <span class="status-badge" :class="tone"><i />{{ label || status }}</span>
+</template>
+
 <script setup lang="ts">
 import { computed } from 'vue'
-const props=defineProps<{status?:string;label?:string}>()
-const tone=computed(()=>{const s=(props.status||'Unknown').toLowerCase();if(['healthy','succeeded'].includes(s))return'success';if(['failed'].includes(s))return'danger';if(['degraded'].includes(s))return'warning';if(['running','progressing'].includes(s))return'info';return'neutral'})
 
+const props = defineProps<{ status?: string; label?: string }>()
+
+const tone = computed(() => {
+  const status = (props.status || 'Unknown').toLowerCase()
+  if (['healthy', 'succeeded', 'approved', 'active', 'configured'].includes(status)) return 'success'
+  if (['failed', 'rejected'].includes(status)) return 'danger'
+  if (['degraded', 'pending'].includes(status)) return 'warning'
+  if (['running', 'progressing'].includes(status)) return 'info'
+  return 'neutral'
+})
 </script>
-<style scoped>.status-badge{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:3px 9px;border-radius:13px;font-size:12px;line-height:1;font-weight:600;color:#aab3c1;background:var(--surface-raised)}.status-badge i{width:6px;height:6px;border-radius:50%;background:#7c8595}.status-badge.success{color:#71d7aa;background:rgba(71,201,143,.12)}.status-badge.success i{background:var(--success)}.status-badge.danger{color:#f58d96;background:rgba(231,99,111,.13)}.status-badge.danger i{background:var(--danger)}.status-badge.warning{color:#f0c17a;background:rgba(230,169,80,.13)}.status-badge.warning i{background:var(--warning)}.status-badge.info{color:#8bbcff;background:rgba(92,156,242,.13)}.status-badge.info i{background:var(--info)}</style>
+
+<style scoped>
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface-soft);
+}
+
+.status-badge i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-badge.success {
+  color: var(--success);
+  background: rgba(22, 163, 74, 0.1);
+  border-color: rgba(22, 163, 74, 0.1);
+}
+
+.status-badge.danger {
+  color: var(--danger);
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.1);
+}
+
+.status-badge.warning {
+  color: var(--warning);
+  background: rgba(217, 119, 6, 0.1);
+  border-color: rgba(217, 119, 6, 0.1);
+}
+
+.status-badge.info {
+  color: var(--info);
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.1);
+}
+</style>

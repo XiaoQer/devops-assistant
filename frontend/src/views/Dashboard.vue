@@ -1,62 +1,531 @@
 <template>
-  <div class="page-content">
-    <PageHeader eyebrow="Platform overview" title="Dashboard" description="交付系统、应用健康与最近发布的实时概览">
-      <el-button @click="refresh" :loading="loading">刷新数据</el-button><el-button type="primary" @click="$router.push('/applications/new')">＋ 创建应用</el-button>
-    </PageHeader>
-    <el-skeleton :loading="loading && !store.items.length" animated :rows="8">
-      <div class="metrics">
-        <MetricCard title="项目总数" :value="projectCount" icon="▦" helper="当前 Workspace"/>
-        <MetricCard title="应用总数" :value="store.items.length" icon="◇" tone="blue" trend="+1" helper="本周期"/>
-        <MetricCard title="Pipeline 总数" :value="pipelineCount" icon="↯" tone="green" helper="累计执行"/>
-        <MetricCard title="最近失败" :value="failedCount" icon="!" tone="red" helper="需要关注"/>
+  <div class="page-content page-stack">
+    <section class="hero surface glass-card">
+      <div class="hero-copy">
+        <span class="soft-pill">Aegis AI Command</span>
+        <h1>What would you like to do today?</h1>
+        <p>把部署、回滚、创建应用、查看故障与运行状态，统一成一个更自然的软件操作界面。</p>
       </div>
-      <div class="dashboard-grid">
-        <section class="surface health-panel">
-          <div class="surface-header"><div><h3>应用健康分布</h3><p>按最近部署状态统计</p></div><span class="period">Last 24h</span></div>
-          <div class="health-content">
-            <div class="donut" :style="donutStyle"><div><strong>{{ successRate }}%</strong><span>成功率</span></div></div>
-            <div class="legend"><div><i class="green"/><span>Healthy</span><b>{{ healthyCount }}</b></div><div><i class="amber"/><span>Progressing</span><b>{{ runningCount }}</b></div><div><i class="red"/><span>Failed</span><b>{{ failedCount }}</b></div><div><i class="gray"/><span>Unknown</span><b>{{ unknownCount }}</b></div></div>
+      <div class="hero-command">
+        <div class="command-input">
+          <span>⌘</span>
+          <input v-model="command" type="text" placeholder="Deploy payment service to production" @focus="openPalette(command)" @keyup.enter="runCommand" />
+          <button class="run-button" @click="runCommand">Run</button>
+        </div>
+        <div class="prompt-list">
+          <button v-for="item in quickPrompts" :key="item" @click="fillPrompt(item)">{{ item }}</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="metrics">
+      <MetricCard title="Applications" :value="store.items.length" icon="◇" helper="已接入软件服务" />
+      <MetricCard title="Healthy delivery" :value="`${successRate}%`" icon="✓" tone="green" helper="最近执行成功率" />
+      <MetricCard title="Active deployments" :value="runningCount" icon="↻" tone="blue" helper="仍在进行中的变更" />
+      <MetricCard title="Needs attention" :value="failedCount" icon="!" tone="red" helper="建议优先处理" />
+    </div>
+
+    <div class="overview-grid">
+      <section class="surface recommendations">
+        <div class="surface-header">
+          <div>
+            <h3>Recommended next actions</h3>
+            <p>优先展示现在最值得处理的事情，而不是堆叠监控图表。</p>
           </div>
-        </section>
-        <section class="surface ai-card">
-          <span class="ai-icon">✦</span><div><small>AEGIS AI</small><h3>让 AI 分析交付风险</h3><p>汇总失败流水线、异常 Pod 与最近发布，给出优先级明确的修复建议。</p><el-button class="ai-action" type="primary">生成风险摘要 <span>→</span></el-button></div>
-        </section>
-      </div>
-      <div class="dashboard-grid lower">
-        <section class="surface">
-          <div class="surface-header"><div><h3>最近 PipelineRun</h3><p>最新构建与部署执行</p></div><router-link to="/applications">查看全部</router-link></div>
-          <div v-if="recentPipelines.length" class="pipeline-list">
-            <article v-for="item in recentPipelines" :key="item.pipeline_run_name" @click="$router.push(`/pipelines/${item.pipeline_run_name}`)"><span class="pipeline-icon">↯</span><div><b>{{ item.pipeline_run_name }}</b><small>{{ item.appName }} · {{ formatTime(item.created_at) }}</small></div><StatusBadge :status="item.status"/><i>›</i></article>
+          <el-button @click="refresh" :loading="loading">刷新</el-button>
+        </div>
+        <div class="recommendation-list">
+          <article v-for="action in suggestedActions" :key="action.title" class="recommendation-item">
+            <div>
+              <span class="soft-pill">{{ action.tag }}</span>
+              <h4>{{ action.title }}</h4>
+              <p>{{ action.description }}</p>
+            </div>
+            <el-button @click="action.run()">{{ action.cta }}</el-button>
+          </article>
+        </div>
+      </section>
+
+      <section class="surface health-card">
+        <div class="surface-header">
+          <div>
+            <h3>Production health</h3>
+            <p>仅保留真正影响决策的核心信号。</p>
           </div>
-          <EmptyState v-else title="暂无 Pipeline 执行" description="从应用详情发起一次部署后，执行状态会显示在这里。"/>
-        </section>
-        <section class="surface">
-          <div class="surface-header"><div><h3>最近发布</h3><p>跨应用发布活动</p></div></div>
-          <div v-if="releases.length" class="release-list"><article v-for="release in releases.slice(0,5)" :key="release.id"><span class="release-dot"/><div><b>{{ release.image_tag }}</b><small>{{ release.environment.toUpperCase() }} · {{ release.deploy_user }}</small></div><StatusBadge :status="release.deploy_status"/><time>{{ formatShort(release.created_at) }}</time></article></div>
-          <EmptyState v-else title="暂无发布记录" description="发布记录将作为审计轨迹保留。"/>
-        </section>
-      </div>
-    </el-skeleton>
+          <StatusBadge :status="failedCount ? 'Degraded' : 'Healthy'" :label="failedCount ? 'Needs review' : 'Stable'" />
+        </div>
+        <div class="health-score">
+          <div class="ring" :style="donutStyle">
+            <div>
+              <strong>{{ successRate }}%</strong>
+              <span>delivery confidence</span>
+            </div>
+          </div>
+          <div class="health-meta">
+            <div><label>Healthy</label><b>{{ healthyCount }}</b></div>
+            <div><label>Running</label><b>{{ runningCount }}</b></div>
+            <div><label>Failed</label><b>{{ failedCount }}</b></div>
+            <div><label>Unknown</label><b>{{ unknownCount }}</b></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="activity-grid">
+      <section class="surface">
+        <div class="surface-header">
+          <div>
+            <h3>Recent activity</h3>
+            <p>把发布、流水线与异常统一成一条面向行动的活动流。</p>
+          </div>
+        </div>
+        <div v-if="activityFeed.length" class="activity-list">
+          <article v-for="item in activityFeed" :key="item.id" class="activity-item" @click="openActivity(item)">
+            <div class="activity-dot" :class="item.tone"></div>
+            <div class="activity-main">
+              <b>{{ item.title }}</b>
+              <p>{{ item.description }}</p>
+            </div>
+            <StatusBadge :status="item.status" />
+            <time>{{ item.time }}</time>
+          </article>
+        </div>
+        <EmptyState v-else title="暂无活动" description="第一次部署或发布之后，这里会自动生成你的软件活动流。" />
+      </section>
+
+      <section class="surface quick-actions-card">
+        <div class="surface-header">
+          <div>
+            <h3>Quick actions</h3>
+            <p>围绕“下一步操作”组织体验，而不是配置项。</p>
+          </div>
+        </div>
+        <div class="quick-actions">
+          <button @click="$router.push('/applications/new')">
+            <strong>Create application</strong>
+            <span>从仓库创建一个新的服务工作区</span>
+          </button>
+          <button @click="$router.push('/releases')">
+            <strong>Review releases</strong>
+            <span>查看发布历史、回滚与交付轨迹</span>
+          </button>
+          <button @click="$router.push('/approvals')">
+            <strong>Handle approvals</strong>
+            <span>快速处理 Production 变更申请</span>
+          </button>
+          <button @click="$router.push('/pipelines')">
+            <strong>Inspect pipelines</strong>
+            <span>定位失败构建或进行中的执行</span>
+          </button>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
+
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useApplicationStore } from '../stores/application'
 import { applicationApi } from '../api/application'
+import { useCommandCenter } from '../composables/useCommandCenter'
 import type { Release } from '../types'
-import PageHeader from '../components/common/PageHeader.vue';import MetricCard from '../components/common/MetricCard.vue';import StatusBadge from '../components/common/StatusBadge.vue';import EmptyState from '../components/common/EmptyState.vue'
-const store=useApplicationStore(),loading=ref(false),releases=ref<Release[]>([])
-const executions=computed(()=>store.items.flatMap(a=>a.latest_execution?[{...a.latest_execution,appName:a.name}]:[]))
-const recentPipelines=computed(()=>executions.value.sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,6))
-const pipelineCount=computed(()=>executions.value.length),failedCount=computed(()=>executions.value.filter(e=>e.status==='Failed').length),healthyCount=computed(()=>executions.value.filter(e=>e.status==='Succeeded').length),runningCount=computed(()=>executions.value.filter(e=>['Running','Pending'].includes(e.status)).length),unknownCount=computed(()=>Math.max(store.items.length-healthyCount.value-runningCount.value-failedCount.value,0))
-const projectCount=computed(()=>new Set(store.items.map(a=>a.project_id).filter(Boolean)).size||1),successRate=computed(()=>pipelineCount.value?Math.round(healthyCount.value/pipelineCount.value*100):100)
-const donutStyle=computed(()=>({background:`conic-gradient(var(--success) 0 ${successRate.value}%, var(--danger) ${successRate.value}% ${successRate.value+Math.min(failedCount.value*10,20)}%, #242936 0)`}))
-const formatTime=(v:string)=>new Date(v).toLocaleString('zh-CN',{hour12:false}),formatShort=(v:string)=>new Date(v).toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'})
-async function refresh(){loading.value=true;try{await store.load();const data=await Promise.all(store.items.slice(0,8).map(a=>applicationApi.releases(a.id).catch(()=>[])));releases.value=data.flat().sort((a,b)=>b.created_at.localeCompare(a.created_at))}finally{loading.value=false}}
+import MetricCard from '../components/common/MetricCard.vue'
+import StatusBadge from '../components/common/StatusBadge.vue'
+import EmptyState from '../components/common/EmptyState.vue'
+
+const router = useRouter()
+const store = useApplicationStore()
+const loading = ref(false)
+const releases = ref<Release[]>([])
+const command = ref('')
+const { quickPrompts, runIntent, openPalette } = useCommandCenter()
+
+const executions = computed(() => store.items.flatMap(a => a.latest_execution ? [{ ...a.latest_execution, appName: a.name }] : []))
+const pipelineCount = computed(() => executions.value.length)
+const failedCount = computed(() => executions.value.filter(e => e.status === 'Failed').length)
+const healthyCount = computed(() => executions.value.filter(e => e.status === 'Succeeded').length)
+const runningCount = computed(() => executions.value.filter(e => ['Running', 'Pending'].includes(e.status)).length)
+const unknownCount = computed(() => Math.max(store.items.length - healthyCount.value - runningCount.value - failedCount.value, 0))
+const successRate = computed(() => pipelineCount.value ? Math.round((healthyCount.value / pipelineCount.value) * 100) : 100)
+const donutStyle = computed(() => ({
+  background: `conic-gradient(var(--success) 0 ${successRate.value}%, rgba(220,38,38,.18) ${successRate.value}% 100%)`,
+}))
+
+const suggestedActions = computed(() => [
+  {
+    tag: failedCount.value ? 'Incident' : 'Healthy',
+    title: failedCount.value ? `有 ${failedCount.value} 条失败执行等待处理` : '当前没有失败执行',
+    description: failedCount.value ? '优先查看最近失败的 Pipeline 与发布记录，缩短恢复时间。' : '你可以继续推进今天的发布计划。',
+    cta: failedCount.value ? '查看 pipelines' : '查看发布中心',
+    run: () => router.push(failedCount.value ? '/pipelines' : '/releases'),
+  },
+  {
+    tag: runningCount.value ? 'Live' : 'Flow',
+    title: runningCount.value ? `${runningCount.value} 个交付流程正在进行` : '没有进行中的部署',
+    description: runningCount.value ? '检查进行中的发布，确认是否需要人工关注或等待审批。' : '可以发起新的部署或创建一个新应用。',
+    cta: runningCount.value ? '查看运行' : '创建应用',
+    run: () => router.push(runningCount.value ? '/pipelines' : '/applications/new'),
+  },
+  {
+    tag: 'AI',
+    title: '让 Aegis 帮你决定下一步',
+    description: '把自然语言输入放到主页中心，逐步替代配置表单与传统仪表盘。',
+    cta: '试一个命令',
+    run: () => openPalette('Deploy payment service to production'),
+  },
+])
+
+const activityFeed = computed(() => {
+  const pipelineActivities = executions.value.map(item => ({
+    id: `pipeline-${item.pipeline_run_name}`,
+    type: 'pipeline',
+    title: item.pipeline_run_name,
+    description: `${item.appName} · 最新交付执行`,
+    status: item.status,
+    tone: item.status === 'Failed' ? 'danger' : item.status === 'Succeeded' ? 'success' : 'info',
+    time: formatTime(item.created_at),
+    path: `/pipelines/${item.pipeline_run_name}`,
+  }))
+
+  const releaseActivities = releases.value.slice(0, 6).map(item => ({
+    id: `release-${item.id}`,
+    type: 'release',
+    title: item.image_tag,
+    description: `${item.environment.toUpperCase()} · ${item.deploy_user}`,
+    status: item.deploy_status,
+    tone: item.deploy_status === 'Failed' ? 'danger' : item.deploy_status === 'Succeeded' ? 'success' : 'warning',
+    time: formatTime(item.created_at),
+    path: '/releases',
+  }))
+
+  return [...pipelineActivities, ...releaseActivities]
+    .sort((a, b) => b.time.localeCompare(a.time))
+    .slice(0, 8)
+})
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function openActivity(item: { path: string }) {
+  router.push(item.path)
+}
+
+function fillPrompt(value: string) {
+  command.value = value
+}
+
+async function runCommand() {
+  await runIntent(command.value)
+}
+
+async function refresh() {
+  loading.value = true
+  try {
+    await store.load()
+    const data = await Promise.all(store.items.slice(0, 8).map(a => applicationApi.releases(a.id).catch(() => [])))
+    releases.value = data.flat().sort((a, b) => b.created_at.localeCompare(a.created_at))
+  } finally {
+    loading.value = false
+  }
+}
+
 onMounted(refresh)
-
-
 </script>
+
 <style scoped>
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}.dashboard-grid{display:grid;grid-template-columns:1.25fr .75fr;gap:14px;margin-bottom:14px}.dashboard-grid.lower{grid-template-columns:1fr 1fr}.period,.surface-header a{font-size:13px;color:#8b80ea;text-decoration:none}.health-content{height:205px;display:flex;align-items:center;justify-content:center;gap:48px}.donut{width:130px;height:130px;border-radius:50%;display:grid;place-items:center;position:relative}.donut:after{content:"";position:absolute;inset:13px;background:var(--surface);border-radius:50%}.donut div{position:relative;z-index:1;text-align:center}.donut strong,.donut span{display:block}.donut strong{font-size:23px}.donut span{font-size:12px;color:var(--muted);margin-top:4px}.legend{width:155px}.legend>div{display:grid;grid-template-columns:10px 1fr auto;align-items:center;padding:7px 0;font-size:13px;color:var(--muted)}.legend i{width:6px;height:6px;border-radius:50%}.green{background:var(--success)}.amber{background:var(--warning)}.red{background:var(--danger)}.gray{background:#687386}.legend b{color:var(--text-2)}.ai-card{padding:24px;display:flex;align-items:flex-start;gap:16px;background:radial-gradient(260px 180px at 100% 0,rgba(119,103,232,.17),transparent),var(--surface)}.ai-icon{width:39px;height:39px;display:grid;place-items:center;border-radius:11px;background:linear-gradient(145deg,#9689f2,#6655d3);font-size:17px}.ai-card small{font-size:12px;letter-spacing:1px;color:#a59bf3}.ai-card h3{font-size:15px;margin:7px 0}.ai-card p{font-size:12px;line-height:1.65;color:var(--muted);margin:0 0 18px}.ai-action span{margin-left:4px}.pipeline-list article,.release-list article{min-height:59px;padding:0 18px;display:flex;align-items:center;gap:11px;border-bottom:1px solid var(--border-soft);cursor:pointer}.pipeline-list article:hover{background:var(--surface-raised)}.pipeline-icon{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;background:var(--primary-soft);color:#a399f2}.pipeline-list div,.release-list div{flex:1}.pipeline-list b,.release-list b{display:block;font-size:12px}.pipeline-list small,.release-list small{display:block;margin-top:4px;color:var(--muted);font-size:12px}.pipeline-list>article>i{font-style:normal;color:var(--subtle)}.release-dot{width:7px;height:7px;border:2px solid var(--primary);border-radius:50%}.release-list time{font-size:12px;color:var(--subtle)}@media(max-width:1100px){.metrics{grid-template-columns:1fr 1fr}.dashboard-grid,.dashboard-grid.lower{grid-template-columns:1fr}}
+.hero {
+  padding: 28px;
+}
+
+.hero-copy {
+  max-width: 760px;
+}
+
+.hero h1 {
+  margin: 18px 0 12px;
+  font-size: 48px;
+  line-height: 1.02;
+  letter-spacing: -0.06em;
+}
+
+.hero p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.hero-command {
+  margin-top: 24px;
+}
+
+.command-input {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  padding: 0 16px;
+  border-radius: 18px;
+  border: 1px solid var(--border-soft);
+  background: var(--theme-panel);
+}
+
+.command-input span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.command-input input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.run-button {
+  min-width: 88px;
+  height: 42px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--primary);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.prompt-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.prompt-list button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.overview-grid,
+.activity-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 0.95fr;
+  gap: 16px;
+}
+
+.recommendation-list,
+.activity-list,
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+}
+
+.recommendation-item,
+.activity-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px;
+  padding: 22px 24px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.recommendation-item:first-child,
+.activity-item:first-child {
+  border-top: 0;
+}
+
+.recommendation-item h4 {
+  margin: 14px 0 8px;
+  font-size: 18px;
+  letter-spacing: -0.03em;
+}
+
+.recommendation-item p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.health-card {
+  padding-bottom: 24px;
+}
+
+.health-score {
+  padding: 8px 24px 0;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.ring {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.ring::after {
+  content: '';
+  position: absolute;
+  inset: 16px;
+  border-radius: 50%;
+  background: var(--theme-panel);
+}
+
+.ring > div {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+
+.ring strong,
+.ring span {
+  display: block;
+}
+
+.ring strong {
+  font-size: 34px;
+  letter-spacing: -0.06em;
+}
+
+.ring span {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.health-meta {
+  flex: 1;
+  display: grid;
+  gap: 14px;
+}
+
+.health-meta div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 44px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.health-meta label {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.health-meta b {
+  font-size: 16px;
+}
+
+.activity-item {
+  grid-template-columns: 12px 1fr auto auto;
+  align-items: center;
+  cursor: pointer;
+}
+
+.activity-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--info);
+}
+
+.activity-dot.success {
+  background: var(--success);
+}
+
+.activity-dot.warning {
+  background: var(--warning);
+}
+
+.activity-dot.danger {
+  background: var(--danger);
+}
+
+.activity-main b {
+  display: block;
+  font-size: 14px;
+}
+
+.activity-main p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.activity-item time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.quick-actions {
+  padding: 12px 24px 24px;
+  gap: 12px;
+}
+
+.quick-actions button {
+  padding: 18px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.quick-actions strong,
+.quick-actions span {
+  display: block;
+}
+
+.quick-actions span {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1100px) {
+  .metrics,
+  .overview-grid,
+  .activity-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero h1 {
+    font-size: 38px;
+  }
+
+  .health-score {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .activity-item {
+    grid-template-columns: 12px 1fr;
+  }
+}
 </style>

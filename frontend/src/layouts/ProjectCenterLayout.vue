@@ -1,0 +1,21 @@
+<template>
+  <div class="system-shell project-theme">
+    <aside v-if="projectId">
+      <div class="system-head"><router-link to="/portal">← Portal</router-link><span>GOVERNANCE</span></div>
+      <router-link class="system-brand" :to="projectId?'/project-center/projects':'/project-center'"><span>{{projectId?'PR':'PC'}}</span><div><b>{{projectId?`Project #${projectId}`:'Project Center'}}</b><small>{{projectId?'Management Space':'Project Governance'}}</small></div></router-link>
+      <p class="nav-label">{{projectId?'Current Project':'Project Center'}}</p>
+      <nav>
+        <router-link v-for="item in menu" :key="item.path" :to="item.path"><i>{{item.icon}}</i>{{item.name}}</router-link>
+      </nav>
+      <div class="boundary-note"><b>{{projectId?'Project asset view':'Governance boundary'}}</b><p>{{projectId?'Applications 仅用于资产查看，交付操作请进入 DevCenter。':'Project Center 全局态只负责 Project 列表。'}}</p></div>
+    </aside>
+    <main :class="{ standalone: !projectId }"><header><div><small>PROJECT CENTER</small><h2>{{title}}</h2></div><div class="header-actions"><router-link v-if="!projectId" class="switch" to="/portal">← Portal</router-link><router-link class="switch" to="/devcenter">Switch to DevCenter →</router-link></div></header><div class="content"><router-view/></div></main>
+  </div>
+</template>
+<script setup lang="ts">
+import{computed}from'vue';import{useRoute}from'vue-router';const route=useRoute();const projectId=computed(()=>Number(route.params.projectId)||0);const menu=computed(()=>projectId.value?[{name:'Project Overview',path:`/project-center/projects/${projectId.value}`,icon:'⌂'},{name:'Members & Permissions',path:`/project-center/projects/${projectId.value}/members`,icon:'◎'},{name:'Applications',path:`/project-center/projects/${projectId.value}/applications`,icon:'◇'}]:[{name:'Projects',path:'/project-center/projects',icon:'▦'}]);const title=computed(()=>String(route.meta.title||'Project governance'));
+</script>
+<style scoped>
+.system-shell{min-height:100vh;background:var(--theme-bg)}aside{position:fixed;inset:0 auto 0 0;width:252px;padding:18px 14px;background:#13202b;border-right:1px solid #2b3b48;display:flex;flex-direction:column;z-index:10}.system-head{display:flex;justify-content:space-between;align-items:center;padding:0 7px 18px;border-bottom:1px solid #2b3b48}.system-head a,.system-head span{font-size:10px;color:#8da2b3;text-decoration:none}.system-head span{letter-spacing:1.2px}.system-brand{display:flex;gap:11px;align-items:center;padding:22px 7px;color:#f2f6f9;text-decoration:none}.system-brand>span{width:39px;height:39px;display:grid;place-items:center;border-radius:11px;background:linear-gradient(145deg,#14b8a6,#0f766e);font-size:11px;font-weight:800}.system-brand b,.system-brand small{display:block}.system-brand b{font-size:15px}.system-brand small{font-size:10px;color:#8da2b3;margin-top:3px}.nav-label{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#617786;margin:8px 9px}nav{display:grid;gap:3px}nav a{height:40px;padding:0 10px;border-radius:8px;display:flex;align-items:center;gap:10px;color:#91a5b4;text-decoration:none;font-size:12px}nav a:hover{background:#192a37;color:#e8f0f5}nav a.router-link-exact-active{background:rgba(20,184,166,.14);color:#65ddd0}nav i{width:18px;text-align:center;font-style:normal}.boundary-note{margin-top:auto;padding:14px;border:1px solid #2b3b48;border-radius:10px;background:#172631}.boundary-note b{font-size:11px;color:#c5d3dc}.boundary-note p{font-size:10px;line-height:1.6;color:#7f94a3;margin:5px 0 0}.system-shell>main{margin-left:252px}.system-shell>main>header{height:68px;padding:0 34px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border-soft);background:var(--theme-panel);position:sticky;top:0;z-index:8}.system-shell header small{font-size:9px;letter-spacing:1.3px;color:#14b8a6}.system-shell header h2{font-size:15px;margin:3px 0 0}.switch{padding:8px 11px;border:1px solid var(--border-soft);border-radius:8px;color:var(--muted);font-size:11px;text-decoration:none}.content :deep(.page-content){padding-top:30px}
+.system-shell>main.standalone{margin-left:0}.header-actions{display:flex;align-items:center;gap:8px}
+</style>

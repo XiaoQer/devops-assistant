@@ -9,7 +9,7 @@ from .config import Config
 from .extensions import db, migrate
 from .routes import (
     applications_bp, health_bp, pipelines_bp, environments_bp, releases_bp,
-    approvals_bp, registries_bp,
+    approvals_bp, registries_bp, ai_bp,
 )
 from .utils.errors import ApiError
 from .utils.response import failure
@@ -35,6 +35,7 @@ def create_app(config_class=Config):
     app.register_blueprint(releases_bp)
     app.register_blueprint(approvals_bp)
     app.register_blueprint(registries_bp)
+    app.register_blueprint(ai_bp)
 
     @app.before_request
     def attach_trace_id():

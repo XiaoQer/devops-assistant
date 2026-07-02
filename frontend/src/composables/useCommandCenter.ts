@@ -1,6 +1,7 @@
 import { computed, ref, watchEffect } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
+import { aiApi } from '../api/ai'
 import { applicationApi } from '../api/application'
 import { useApplicationStore } from '../stores/application'
 import { useCommandStore } from '../stores/command'
@@ -206,6 +207,51 @@ export function useCommandCenter() {
     commandStore.close()
   }
 
+  function findCommandByRoute(route?: string) {
+    if (!route) return undefined
+    const routeMap: Record<string, string> = {
+      '/dashboard': 'go-dashboard',
+      '/applications': 'go-applications',
+      '/applications/new': 'new-application',
+      '/pipelines': 'go-pipelines',
+      '/releases': 'go-releases',
+      '/approvals': 'go-approvals',
+      '/settings/registries': 'go-registries',
+    }
+    const commandId = routeMap[route]
+    return commandId ? commands.value.find(command => command.id === commandId) : undefined
+  }
+
+  async function tryResolveByApi(rawQuery: string) {
+    const resolved = await aiApi.resolveIntent(rawQuery)
+    const target = resolved.target as { application_id?: number } | undefined
+    const route = resolved.recommended_action?.route
+
+    if (resolved.intent === 'deploy_application' && target?.application_id) {
+      const deployCommand = commands.value.find(command => command.id === `deploy-app-${target.application_id}`)
+      if (deployCommand) {
+        await executeCommand(deployCommand)
+        return true
+      }
+    }
+
+    if (resolved.intent === 'open_application' && target?.application_id) {
+      const openCommand = commands.value.find(command => command.id === `open-app-${target.application_id}`)
+      if (openCommand) {
+        await executeCommand(openCommand)
+        return true
+      }
+    }
+
+    const routeCommand = findCommandByRoute(route)
+    if (routeCommand) {
+      await executeCommand(routeCommand)
+      return true
+    }
+
+    return false
+  }
+
   async function runIntent(rawQuery: string) {
     const query = rawQuery.trim().toLowerCase()
     if (!query) {
@@ -214,6 +260,13 @@ export function useCommandCenter() {
     }
 
     await ensureApplicationCommands()
+
+    try {
+      const resolved = await tryResolveByApi(rawQuery)
+      if (resolved) return
+    } catch {
+      // silently fallback to local rules
+    }
 
     const exactService = applicationStore.items.find(app => query.includes(app.name.toLowerCase()))
 

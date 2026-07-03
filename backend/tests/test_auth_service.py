@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from app import create_app
 from app.extensions import db
 from app.models import User, UserSession
-from sqlalchemy import inspect
+from sqlalchemy import delete, inspect, text
 
 
 class TestConfig:
@@ -51,6 +51,7 @@ class AuthModelTest(unittest.TestCase):
         self.assertNotIn("password_hash", user.to_dict())
 
     def test_deleting_user_cascades_to_sessions(self):
+        db.session.execute(text("PRAGMA foreign_keys=ON"))
         user = User(username="admin", display_name="Administrator")
         user.set_password("correct horse battery staple")
         user.sessions.append(UserSession(
@@ -60,8 +61,10 @@ class AuthModelTest(unittest.TestCase):
         ))
         db.session.add(user)
         db.session.commit()
+        user_id = user.id
+        db.session.expunge_all()
 
-        db.session.delete(user)
+        db.session.execute(delete(User).where(User.id == user_id))
         db.session.commit()
 
         self.assertEqual(UserSession.query.count(), 0)

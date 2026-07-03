@@ -10,17 +10,22 @@ from .config import Config
 from .extensions import db, migrate
 from .routes import (
     applications_bp, health_bp, pipelines_bp, environments_bp, releases_bp,
-    approvals_bp, registries_bp, ai_bp, projects_bp,
+    approvals_bp, registries_bp, ai_bp, projects_bp, auth_bp,
 )
 from .utils.errors import ApiError
 from .utils.response import failure
 from .services.release_service import ReleaseService
+from .services.auth_service import AuthService
 
 
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
-    CORS(app)
+    CORS(
+        app,
+        origins=app.config.get("CORS_ORIGINS", Config.CORS_ORIGINS),
+        supports_credentials=True,
+    )
     db.init_app(app)
     migrate.init_app(app, db)
 
@@ -38,10 +43,39 @@ def create_app(config_class=Config):
     app.register_blueprint(registries_bp)
     app.register_blueprint(ai_bp)
     app.register_blueprint(projects_bp)
+    app.register_blueprint(auth_bp)
 
     @app.before_request
     def attach_trace_id():
         g.trace_id = request.headers.get("X-Trace-ID") or str(uuid.uuid4())
+
+    @app.before_request
+    def authenticate_api_request():
+        if (
+            not request.path.startswith("/api")
+            or request.method == "OPTIONS"
+            or request.blueprint == "health"
+            or request.endpoint == "auth.login"
+        ):
+            return None
+
+        auth_service = AuthService()
+        session = auth_service.resolve(
+            request.cookies.get(app.config["AUTH_COOKIE_NAME"])
+        )
+        g.current_session = session
+        g.current_user = session.user
+
+        if request.method not in {"GET", "HEAD", "OPTIONS"} and not auth_service.verify_csrf(
+            session,
+            request.headers.get("X-CSRF-Token"),
+        ):
+            raise ApiError(
+                "CSRF 校验失败",
+                403,
+                "CSRF_VALIDATION_FAILED",
+            )
+        return None
 
     @app.after_request
     def return_trace_id(response):

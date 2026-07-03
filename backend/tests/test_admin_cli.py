@@ -1,7 +1,8 @@
 import unittest
 from unittest.mock import patch
 
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
+from sqlalchemy.orm import Query
 
 from app import create_app
 from app.extensions import db
@@ -166,6 +167,34 @@ class CreateAdminCliTest(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         rollback.assert_called_once_with()
         self.assert_secret_absent(result, password, sensitive_detail)
+        self.assertEqual(User.query.count(), 0)
+
+    def test_create_admin_safely_handles_database_error_during_username_lookup(self):
+        password = "lookup-password-value"
+        sensitive_sql = "SELECT * FROM users WHERE password_hash=:secret"
+        sensitive_params = {"secret": password}
+        error = OperationalError(
+            sensitive_sql,
+            sensitive_params,
+            Exception("database-password=lookup-password-value"),
+        )
+
+        with (
+            patch.object(Query, "first", side_effect=error),
+            patch.object(db.session, "rollback", wraps=db.session.rollback) as rollback,
+        ):
+            result = self.invoke(AEGIS_ADMIN_PASSWORD=password)
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("failed to create admin", result.output)
+        rollback.assert_called_once_with()
+        self.assert_secret_absent(
+            result,
+            password,
+            sensitive_sql,
+            str(sensitive_params),
+            "database-password",
+        )
         self.assertEqual(User.query.count(), 0)
 
 

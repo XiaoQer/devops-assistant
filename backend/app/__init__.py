@@ -117,12 +117,13 @@ def create_app(config_class=Config):
             raise click.ClickException("Administrator profile is invalid")
         if not password.strip() or not 12 <= len(password) <= 4096:
             raise click.ClickException("Administrator password is invalid")
-        if User.query.filter_by(username=username).first() is not None:
-            raise click.ClickException("admin already exists")
 
-        user = User(username=username, display_name=display_name)
-        user.set_password(password)
         try:
+            if User.query.filter_by(username=username).first() is not None:
+                raise click.ClickException("admin already exists")
+
+            user = User(username=username, display_name=display_name)
+            user.set_password(password)
             db.session.add(user)
             db.session.commit()
         except IntegrityError:

@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from app import create_app
 from app.extensions import db
@@ -21,6 +22,7 @@ class TestConfig:
     AUTH_CSRF_COOKIE_NAME = "test_csrf"
     AUTH_COOKIE_SECURE = False
     CORS_ORIGINS = ["https://console.example"]
+    MAX_CONTENT_LENGTH = 16384
 
 
 class AuthRoutesTest(unittest.TestCase):
@@ -66,6 +68,25 @@ class AuthRoutesTest(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertNotEqual(response.get_json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
+    def test_login_rejects_oversized_fields_and_request_bodies(self):
+        for payload in (
+            {"username": "a" * 121, "password": FAKE_PASSWORD},
+            {"username": "admin", "password": "a" * 4097},
+        ):
+            with self.subTest(field=next(key for key, value in payload.items() if len(value) > 120)):
+                self.assert_error(
+                    self.client.post("/api/auth/login", json=payload),
+                    400,
+                    "VALIDATION_ERROR",
+                )
+
+        response = self.client.post(
+            "/api/auth/login",
+            data=b" " * 16385,
+            content_type="application/json",
+        )
+        self.assert_error(response, 413, "REQUEST_TOO_LARGE")
+
     def test_business_get_requires_authentication_with_uniform_envelope(self):
         response = self.client.get("/api/projects")
 
@@ -92,6 +113,7 @@ class AuthRoutesTest(unittest.TestCase):
         self.assertNotIn("HttpOnly", csrf_cookie)
         self.assertIn("SameSite=Lax", csrf_cookie)
         self.assertIn("Max-Age=10800", csrf_cookie)
+        self.assertIn("no-store", response.headers["Cache-Control"])
 
     def test_wrong_credentials_have_identical_response(self):
         missing = self.client.post(
@@ -118,6 +140,45 @@ class AuthRoutesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["data"], login_data)
+        self.assertIn("no-store", response.headers["Cache-Control"])
+
+    def test_me_rotates_missing_or_invalid_csrf_cookie_but_not_valid_cookie(self):
+        login(self.client)
+        session = UserSession.query.one()
+
+        with patch(
+            "app.services.auth_service.secrets.token_urlsafe",
+            side_effect=["rotated-missing", "rotated-invalid"],
+        ) as generate:
+            self.client.delete_cookie("test_csrf")
+            missing = self.client.get("/api/auth/me")
+            self.assertEqual(
+                missing.get_json()["data"]["csrf_token"],
+                "rotated-missing",
+            )
+            self.assertTrue(
+                any(
+                    item.startswith("test_csrf=rotated-missing")
+                    for item in missing.headers.getlist("Set-Cookie")
+                )
+            )
+
+            self.client.set_cookie("test_csrf", "invalid")
+            invalid = self.client.get("/api/auth/me")
+            self.assertEqual(
+                invalid.get_json()["data"]["csrf_token"],
+                "rotated-invalid",
+            )
+
+            valid = self.client.get("/api/auth/me")
+            self.assertEqual(
+                valid.get_json()["data"]["csrf_token"],
+                "rotated-invalid",
+            )
+
+        self.assertEqual(generate.call_count, 2)
+        db.session.refresh(session)
+        self.assertNotEqual(session.csrf_digest, "rotated-invalid")
 
     def test_logout_requires_csrf_then_revokes_session_and_clears_cookies(self):
         _response, data = login(self.client)
@@ -136,6 +197,7 @@ class AuthRoutesTest(unittest.TestCase):
         cookies = response.headers.getlist("Set-Cookie")
         self.assertTrue(any(item.startswith("test_session=;") for item in cookies))
         self.assertTrue(any(item.startswith("test_csrf=;") for item in cookies))
+        self.assertIn("no-store", response.headers["Cache-Control"])
         self.assert_error(
             self.client.get("/api/auth/me"),
             401,
@@ -163,6 +225,28 @@ class AuthRoutesTest(unittest.TestCase):
         )
         self.assertNotEqual(response.status_code, 403)
 
+    def test_business_write_requires_header_cookie_and_database_digest_to_match(self):
+        _response, data = login(self.client)
+
+        self.client.delete_cookie("test_csrf")
+        self.assert_error(
+            csrf_post(self.client, "/api/projects", data["csrf_token"], json={}),
+            403,
+            "CSRF_VALIDATION_FAILED",
+        )
+        self.client.set_cookie("test_csrf", "wrong-cookie")
+        self.assert_error(
+            csrf_post(self.client, "/api/projects", data["csrf_token"], json={}),
+            403,
+            "CSRF_VALIDATION_FAILED",
+        )
+        self.client.set_cookie("test_csrf", data["csrf_token"])
+        self.assert_error(
+            csrf_post(self.client, "/api/projects", "wrong-header", json={}),
+            403,
+            "CSRF_VALIDATION_FAILED",
+        )
+
     def test_options_preflight_is_public_and_credentialed_for_controlled_origin(self):
         response = self.client.options(
             "/api/projects",
@@ -178,6 +262,15 @@ class AuthRoutesTest(unittest.TestCase):
             "https://console.example",
         )
         self.assertEqual(response.headers["Access-Control-Allow-Credentials"], "true")
+
+        rejected = self.client.options(
+            "/api/projects",
+            headers={
+                "Origin": "https://attacker.example",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        self.assertNotIn("Access-Control-Allow-Origin", rejected.headers)
 
 
 if __name__ == "__main__":

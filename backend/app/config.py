@@ -10,6 +10,7 @@ def _comma_separated_env(name, default):
 
 
 class Config:
+    MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", "16384"))
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL",
         "mysql+pymysql://devops:devops@127.0.0.1:3307/devops_platform"

@@ -27,6 +27,10 @@ def _login_payload():
         value = payload.get(field)
         if not isinstance(value, str) or not value.strip():
             raise ApiError(f"{field} 必须是非空字符串", 400, "VALIDATION_ERROR")
+    if len(payload["username"]) > 120:
+        raise ApiError("username 长度不能超过 120", 400, "VALIDATION_ERROR")
+    if len(payload["password"]) > 4096:
+        raise ApiError("password 长度不能超过 4096", 400, "VALIDATION_ERROR")
     return payload
 
 
@@ -58,14 +62,27 @@ def login():
 
 @bp.get("/me")
 def me():
-    return success(
-        {
-            "user": g.current_user.to_dict(),
-            "csrf_token": request.cookies.get(
-                current_app.config["AUTH_CSRF_COOKIE_NAME"]
-            ),
-        }
+    csrf_token = request.cookies.get(
+        current_app.config["AUTH_CSRF_COOKIE_NAME"]
     )
+    rotated = not auth_service.verify_csrf(g.current_session, csrf_token)
+    if rotated:
+        csrf_token = auth_service.rotate_csrf(g.current_session)
+    response = make_response(
+        success(
+            {
+                "user": g.current_user.to_dict(),
+                "csrf_token": csrf_token,
+            }
+        )
+    )
+    if rotated:
+        response.set_cookie(
+            current_app.config["AUTH_CSRF_COOKIE_NAME"],
+            csrf_token,
+            **_cookie_options(http_only=False),
+        )
+    return response
 
 
 @bp.post("/logout")

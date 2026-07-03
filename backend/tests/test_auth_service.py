@@ -273,6 +273,24 @@ class AuthServiceTest(unittest.TestCase):
 
         self.assertIsNotNone(persisted.revoked_at)
 
+    def test_rotate_csrf_replaces_digest_and_commits(self):
+        result = self.service.login("admin", self.password)
+        previous_digest = result.session.csrf_digest
+
+        with patch(
+            "app.services.auth_service.secrets.token_urlsafe",
+            return_value="rotated-csrf-token",
+        ):
+            token = self.service.rotate_csrf(result.session)
+
+        self.assertEqual(token, "rotated-csrf-token")
+        self.assertNotEqual(result.session.csrf_digest, previous_digest)
+        db.session.expire_all()
+        self.assertEqual(
+            db.session.get(UserSession, result.session.id).csrf_digest,
+            AuthService.digest(token),
+        )
+
 
 class AuthConfigTest(unittest.TestCase):
     def tearDown(self):
@@ -287,6 +305,7 @@ class AuthConfigTest(unittest.TestCase):
             self.assertEqual(config.AUTH_CSRF_COOKIE_NAME, "aegis_csrf")
             self.assertFalse(config.AUTH_COOKIE_SECURE)
             self.assertEqual(config.CORS_ORIGINS, ["http://localhost:5173"])
+            self.assertEqual(config.MAX_CONTENT_LENGTH, 16384)
 
     def test_auth_config_parses_environment_values(self):
         environment = {

@@ -81,6 +81,12 @@ class AuthService:
             self.digest(csrf_token),
         )
 
+    def rotate_csrf(self, session):
+        csrf_token = secrets.token_urlsafe(32)
+        session.csrf_digest = self.digest(csrf_token)
+        db.session.commit()
+        return csrf_token
+
     def revoke(self, session):
         session.revoked_at = utcnow()
         db.session.commit()

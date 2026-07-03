@@ -1,10 +1,13 @@
+import secrets
+import uuid
+
 from flask import Flask
 from flask import g, request
 from flask_cors import CORS
 from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
 from sqlalchemy import inspect, text
-import uuid
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from .config import Config
 from .extensions import db, migrate
@@ -66,20 +69,27 @@ def create_app(config_class=Config):
         g.current_session = session
         g.current_user = session.user
 
-        if request.method not in {"GET", "HEAD", "OPTIONS"} and not auth_service.verify_csrf(
-            session,
-            request.headers.get("X-CSRF-Token"),
-        ):
-            raise ApiError(
-                "CSRF 校验失败",
-                403,
-                "CSRF_VALIDATION_FAILED",
-            )
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            csrf_header = request.headers.get("X-CSRF-Token")
+            csrf_cookie = request.cookies.get(app.config["AUTH_CSRF_COOKIE_NAME"])
+            csrf_tokens_match = bool(
+                csrf_header and csrf_cookie
+            ) and secrets.compare_digest(csrf_header, csrf_cookie)
+            if not csrf_tokens_match or not auth_service.verify_csrf(
+                session, csrf_header
+            ):
+                raise ApiError(
+                    "CSRF 校验失败",
+                    403,
+                    "CSRF_VALIDATION_FAILED",
+                )
         return None
 
     @app.after_request
     def return_trace_id(response):
         response.headers["X-Trace-ID"] = getattr(g, "trace_id", "")
+        if request.blueprint == "auth":
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     @app.cli.command("sync-deliveries")
@@ -188,6 +198,10 @@ def create_app(config_class=Config):
     @app.errorhandler(404)
     def handle_not_found(_exc):
         return failure("接口不存在", "NOT_FOUND", 404)
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_request_too_large(_exc):
+        return failure("请求体过大", "REQUEST_TOO_LARGE", 413)
 
     @app.errorhandler(ConfigException)
     def handle_kubernetes_config_error(exc):

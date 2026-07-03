@@ -9,6 +9,7 @@ from flask_cors import CORS
 from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from .config import Config
@@ -110,20 +111,26 @@ def create_app(config_class=Config):
 
         if not username or not display_name or not password:
             raise click.ClickException(
-                "AEGIS_ADMIN_USERNAME, AEGIS_ADMIN_DISPLAY_NAME, and "
-                "AEGIS_ADMIN_PASSWORD are required"
+                "Administrator credentials are required"
             )
-        if len(password) < 12:
-            raise click.ClickException(
-                "AEGIS_ADMIN_PASSWORD must be at least 12 characters"
-            )
+        if len(username) > 120 or len(display_name) > 120:
+            raise click.ClickException("Administrator profile is invalid")
+        if not password.strip() or not 12 <= len(password) <= 4096:
+            raise click.ClickException("Administrator password is invalid")
         if User.query.filter_by(username=username).first() is not None:
-            raise click.ClickException(f"User '{username}' already exists")
+            raise click.ClickException("admin already exists")
 
         user = User(username=username, display_name=display_name)
         user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
+        try:
+            db.session.add(user)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            raise click.ClickException("admin already exists") from None
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise click.ClickException("failed to create admin") from None
         click.echo(f"Administrator '{username}' created successfully")
 
     @app.cli.command("sync-project-schema")

@@ -1,4 +1,4 @@
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
 from app.models import ApprovalRecord, Application
 from app.services.approval_service import ApprovalService
@@ -44,7 +44,7 @@ def submit_approval():
     if not app:
         raise ApiError("应用不存在", 404, "APPLICATION_NOT_FOUND")
     item = ApprovalService().submit(
-        app, payload, request.headers.get("X-User", "local-user")
+        app, payload, g.current_user.username
     )
     return success(item.to_dict(), "发布审批已提交", 201)
 
@@ -54,7 +54,7 @@ def approve(approval_id):
     payload = json_object(request.get_json(silent=True))
     item = ApprovalService().approve(
         get_approval(approval_id),
-        request.headers.get("X-User", "project-owner"),
+        g.current_user.username,
         payload.get("comment"),
     )
     return success(item.to_dict(), "审批通过，PipelineRun 已创建")
@@ -66,7 +66,7 @@ def reject(approval_id):
     comment = require_string(payload, "comment")
     item = ApprovalService().reject(
         get_approval(approval_id),
-        request.headers.get("X-User", "project-owner"),
+        g.current_user.username,
         comment,
     )
     return success(item.to_dict(), "审批已拒绝")

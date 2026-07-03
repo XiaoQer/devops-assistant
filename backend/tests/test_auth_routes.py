@@ -3,7 +3,15 @@ from unittest.mock import patch
 
 from app import create_app
 from app.extensions import db
-from app.models import User, UserSession
+from app.models import (
+    ApprovalRecord,
+    Application,
+    ApplicationConfig,
+    ApplicationEnvironment,
+    ReleaseRecord,
+    User,
+    UserSession,
+)
 
 from auth_helpers import FAKE_PASSWORD, create_user, csrf_post, login
 
@@ -246,6 +254,198 @@ class AuthRoutesTest(unittest.TestCase):
             403,
             "CSRF_VALIDATION_FAILED",
         )
+
+    def _create_application_delivery_records(self):
+        app = Application(
+            name="trusted-actor-app",
+            repo_url="https://github.com/example/trusted-actor-app.git",
+            branch="main",
+            language="python",
+            framework="flask",
+            build_type="dockerfile",
+            namespace="trusted-actor-dev",
+            image_name="registry.local/trusted-actor-app",
+            image_tag="v2",
+            port=8080,
+            status="Running",
+        )
+        db.session.add(app)
+        db.session.flush()
+        environment = ApplicationEnvironment(
+            application_id=app.id,
+            environment_name="dev",
+            namespace="trusted-actor-dev",
+            approval_required=False,
+        )
+        source_release = ReleaseRecord(
+            application_id=app.id,
+            release_type="deploy",
+            environment="dev",
+            git_repo=app.repo_url,
+            git_branch=app.branch,
+            image_name=app.image_name,
+            image_tag="v1",
+            deploy_namespace=environment.namespace,
+            deploy_status="Succeeded",
+            deploy_user="previous-user",
+        )
+        approval = ApprovalRecord(
+            application_id=app.id,
+            environment="dev",
+            namespace=environment.namespace,
+            image_name=app.image_name,
+            image_tag=app.image_tag,
+            applicant="requester",
+            status="Pending",
+        )
+        db.session.add_all([environment, source_release, approval])
+        db.session.commit()
+        return app, environment, source_release, approval
+
+    def test_config_writes_use_authenticated_user_instead_of_x_user(self):
+        _response, auth = login(self.client)
+        app, environment, _release, _approval = (
+            self._create_application_delivery_records()
+        )
+
+        response = csrf_post(
+            self.client,
+            f"/api/applications/{app.id}/configs",
+            auth["csrf_token"],
+            json={
+                "environment_id": environment.id,
+                "config_key": "LOG_LEVEL",
+                "value": "info",
+            },
+            headers={"X-User": "attacker"},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        created = ApplicationConfig.query.one()
+        self.assertEqual(created.changed_by, "admin")
+
+        update_response = self.client.patch(
+            f"/api/configs/{created.id}",
+            json={"value": "debug"},
+            headers={
+                "X-CSRF-Token": auth["csrf_token"],
+                "X-User": "attacker",
+            },
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        self.assertEqual(
+            ApplicationConfig.query.filter_by(is_active=True).one().changed_by,
+            "admin",
+        )
+
+    @patch("app.routes.applications.ApprovalService.submit")
+    @patch("app.routes.applications.DeploymentPlanService.build_plan")
+    def test_deploy_approval_uses_authenticated_user(self, build_plan, submit):
+        _response, auth = login(self.client)
+        app, environment, _release, approval = (
+            self._create_application_delivery_records()
+        )
+        environment.approval_required = True
+        db.session.commit()
+        build_plan.return_value = {"can_deploy": True}
+        submit.return_value = approval
+
+        response = csrf_post(
+            self.client,
+            f"/api/applications/{app.id}/deploy",
+            auth["csrf_token"],
+            json={"environment": "dev"},
+            headers={"X-User": "attacker"},
+        )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(submit.call_args.args[2], "admin")
+
+    @patch("app.routes.applications.ReleaseService.rollback")
+    @patch("app.routes.applications.ApplicationService.deploy")
+    @patch("app.routes.applications.DeploymentPlanService.build_plan")
+    def test_deploy_and_rollback_use_authenticated_user(
+        self, build_plan, deploy, rollback
+    ):
+        _response, auth = login(self.client)
+        app, _environment, source_release, _approval = (
+            self._create_application_delivery_records()
+        )
+        build_plan.return_value = {"can_deploy": True}
+        execution = unittest.mock.Mock()
+        execution.to_dict.return_value = {}
+        deployed_release = unittest.mock.Mock()
+        deployed_release.to_dict.return_value = {}
+        deploy.return_value = (execution, deployed_release)
+        rollback_record = unittest.mock.Mock()
+        rollback_record.to_dict.return_value = {}
+        rollback.return_value = ({}, rollback_record)
+        headers = {"X-User": "attacker"}
+
+        deploy_response = csrf_post(
+            self.client,
+            f"/api/applications/{app.id}/deploy",
+            auth["csrf_token"],
+            json={"environment": "dev"},
+            headers=headers,
+        )
+        rollback_response = csrf_post(
+            self.client,
+            f"/api/applications/{app.id}/rollback",
+            auth["csrf_token"],
+            json={"environment": "dev", "release_id": source_release.id},
+            headers=headers,
+        )
+
+        self.assertEqual(deploy_response.status_code, 201)
+        self.assertEqual(rollback_response.status_code, 200)
+        self.assertEqual(deploy.call_args.args[2], "admin")
+        self.assertEqual(rollback.call_args.args[3], "admin")
+
+    @patch("app.routes.approvals.ApprovalService.reject")
+    @patch("app.routes.approvals.ApprovalService.approve")
+    @patch("app.routes.approvals.ApprovalService.submit")
+    def test_approval_actions_use_authenticated_user(
+        self, submit, approve, reject
+    ):
+        _response, auth = login(self.client)
+        app, _environment, _release, approval = (
+            self._create_application_delivery_records()
+        )
+        submit.return_value = approval
+        approve.return_value = approval
+        reject.return_value = approval
+        headers = {"X-User": "attacker"}
+
+        submit_response = csrf_post(
+            self.client,
+            "/api/approvals",
+            auth["csrf_token"],
+            json={"application_id": app.id, "environment": "dev"},
+            headers=headers,
+        )
+        approve_response = csrf_post(
+            self.client,
+            f"/api/approvals/{approval.id}/approve",
+            auth["csrf_token"],
+            json={"comment": "approved"},
+            headers=headers,
+        )
+        reject_response = csrf_post(
+            self.client,
+            f"/api/approvals/{approval.id}/reject",
+            auth["csrf_token"],
+            json={"comment": "rejected"},
+            headers=headers,
+        )
+
+        self.assertEqual(submit_response.status_code, 201)
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(reject_response.status_code, 200)
+        self.assertEqual(submit.call_args.args[2], "admin")
+        self.assertEqual(approve.call_args.args[1], "admin")
+        self.assertEqual(reject.call_args.args[1], "admin")
 
     def test_options_preflight_is_public_and_credentialed_for_controlled_origin(self):
         response = self.client.options(

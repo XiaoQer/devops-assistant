@@ -3,8 +3,16 @@ from unittest.mock import patch
 
 from app import create_app
 from app.extensions import db
-from app.models import Application, ApplicationConfig, ApplicationEnvironment, ReleaseRecord
+from app.models import (
+    Application,
+    ApplicationConfig,
+    ApplicationEnvironment,
+    ReleaseRecord,
+    User,
+)
 from app.services.deployment_plan_service import DeploymentPlanService
+
+from auth_helpers import create_user, csrf_post, login
 
 
 class TestConfig:
@@ -16,6 +24,10 @@ class TestConfig:
     AUTO_CREATE_SCHEMA = True
     SECRET_KEY = "deployment-plan-test-secret"
     TESTING = True
+    AUTH_SESSION_HOURS = 8
+    AUTH_COOKIE_NAME = "test_session"
+    AUTH_CSRF_COOKIE_NAME = "test_csrf"
+    AUTH_COOKIE_SECURE = False
 
 
 class DeploymentPlanServiceTest(unittest.TestCase):
@@ -24,6 +36,9 @@ class DeploymentPlanServiceTest(unittest.TestCase):
         self.context = self.app.app_context()
         self.context.push()
         self.client = self.app.test_client()
+        create_user(db, User)
+        _response, auth = login(self.client)
+        self.csrf_token = auth["csrf_token"]
 
     def tearDown(self):
         db.session.remove()
@@ -140,7 +155,12 @@ class DeploymentPlanServiceTest(unittest.TestCase):
         ))
         db.session.commit()
 
-        response = self.client.post(f"/api/applications/{app.id}/deploy", json={"environment": "dev"})
+        response = csrf_post(
+            self.client,
+            f"/api/applications/{app.id}/deploy",
+            self.csrf_token,
+            json={"environment": "dev"},
+        )
 
         self.assertEqual(response.status_code, 409)
         body = response.get_json()
@@ -158,7 +178,12 @@ class DeploymentPlanServiceTest(unittest.TestCase):
         ))
         db.session.commit()
 
-        response = self.client.post(f"/api/applications/{app.id}/deploy/plan", json={"environment": "dev"})
+        response = csrf_post(
+            self.client,
+            f"/api/applications/{app.id}/deploy/plan",
+            self.csrf_token,
+            json={"environment": "dev"},
+        )
 
         self.assertEqual(response.status_code, 200)
         body = response.get_json()["data"]

@@ -1,4 +1,4 @@
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
 from app.models import Application, ApplicationEnvironment, ReleaseRecord
 from app.services.application_service import ApplicationService
@@ -68,7 +68,7 @@ def deploy_application(app_id):
     ).first()
     if environment and environment.approval_required:
         approval = ApprovalService().submit(
-            app, payload, request.headers.get("X-User", "local-user")
+            app, payload, g.current_user.username
         )
         return success(
             {
@@ -81,7 +81,7 @@ def deploy_application(app_id):
     execution, release = ApplicationService().deploy(
         app,
         payload,
-        request.headers.get("X-User", "local-user"),
+        g.current_user.username,
     )
     data = execution.to_dict()
     data["release"] = release.to_dict()
@@ -119,7 +119,7 @@ def rollback_application(app_id):
         get_application(app_id),
         release_id,
         environment_name,
-        request.headers.get("X-User", "local-user"),
+        g.current_user.username,
     )
     return success(
         {**result, "release": release.to_dict()},

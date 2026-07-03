@@ -4,9 +4,6 @@ from .project import utcnow
 
 class UserSession(db.Model):
     __tablename__ = "user_sessions"
-    __table_args__ = (
-        db.UniqueConstraint("token_digest", name="uq_user_sessions_token_digest"),
-    )
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
@@ -19,7 +16,7 @@ class UserSession(db.Model):
         nullable=False,
         index=True,
     )
-    token_digest = db.Column(db.String(64), nullable=False, index=True)
+    token_digest = db.Column(db.String(64), nullable=False, unique=True)
     csrf_digest = db.Column(db.String(64), nullable=False)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
     revoked_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)

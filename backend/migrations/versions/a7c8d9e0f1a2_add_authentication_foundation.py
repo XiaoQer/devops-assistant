@@ -27,7 +27,6 @@ def upgrade():
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("username", name="uq_users_username"),
     )
-    op.create_index("ix_users_username", "users", ["username"], unique=False)
     op.create_index("ix_users_is_active", "users", ["is_active"], unique=False)
 
     op.create_table(
@@ -58,12 +57,6 @@ def upgrade():
         unique=False,
     )
     op.create_index(
-        "ix_user_sessions_token_digest",
-        "user_sessions",
-        ["token_digest"],
-        unique=False,
-    )
-    op.create_index(
         "ix_user_sessions_expires_at",
         "user_sessions",
         ["expires_at"],
@@ -80,9 +73,7 @@ def upgrade():
 def downgrade():
     op.drop_index("ix_user_sessions_revoked_at", table_name="user_sessions")
     op.drop_index("ix_user_sessions_expires_at", table_name="user_sessions")
-    op.drop_index("ix_user_sessions_token_digest", table_name="user_sessions")
     op.drop_index("ix_user_sessions_user_id", table_name="user_sessions")
     op.drop_table("user_sessions")
     op.drop_index("ix_users_is_active", table_name="users")
-    op.drop_index("ix_users_username", table_name="users")
     op.drop_table("users")

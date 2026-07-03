@@ -6,12 +6,9 @@ from .project import utcnow
 
 class User(db.Model):
     __tablename__ = "users"
-    __table_args__ = (
-        db.UniqueConstraint("username", name="uq_users_username"),
-    )
 
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(120), nullable=False, index=True)
+    username = db.Column(db.String(120), nullable=False, unique=True)
     display_name = db.Column(db.String(120), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)

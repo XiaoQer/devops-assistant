@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from app import create_app
 from app.extensions import db
 from app.models import User, UserSession
+from sqlalchemy import inspect
 
 
 class TestConfig:
@@ -64,6 +65,37 @@ class AuthModelTest(unittest.TestCase):
         db.session.commit()
 
         self.assertEqual(UserSession.query.count(), 0)
+
+    def test_unique_fields_do_not_create_redundant_indexes(self):
+        inspector = inspect(db.engine)
+
+        self.assertEqual(
+            {item["column_names"][0] for item in inspector.get_unique_constraints("users")},
+            {"username"},
+        )
+        self.assertNotIn(
+            "username",
+            {
+                column
+                for item in inspector.get_indexes("users")
+                for column in item["column_names"]
+            },
+        )
+        self.assertEqual(
+            {
+                item["column_names"][0]
+                for item in inspector.get_unique_constraints("user_sessions")
+            },
+            {"token_digest"},
+        )
+        self.assertNotIn(
+            "token_digest",
+            {
+                column
+                for item in inspector.get_indexes("user_sessions")
+                for column in item["column_names"]
+            },
+        )
 
 
 if __name__ == "__main__":

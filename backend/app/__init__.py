@@ -1,6 +1,8 @@
+import os
 import secrets
 import uuid
 
+import click
 from flask import Flask
 from flask import g, request
 from flask_cors import CORS
@@ -11,6 +13,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from .config import Config
 from .extensions import db, migrate
+from .models import User
 from .routes import (
     applications_bp, health_bp, pipelines_bp, environments_bp, releases_bp,
     approvals_bp, registries_bp, ai_bp, projects_bp, auth_bp,
@@ -97,6 +100,31 @@ def create_app(config_class=Config):
         """Synchronize pending Tekton runs into delivery records."""
         count = ReleaseService().sync_all()
         print(f"Synced {count} pending delivery records")
+
+    @app.cli.command("create-admin")
+    def create_admin():
+        """Create the initial administrator from environment variables."""
+        username = os.environ.get("AEGIS_ADMIN_USERNAME", "").strip()
+        display_name = os.environ.get("AEGIS_ADMIN_DISPLAY_NAME", "").strip()
+        password = os.environ.get("AEGIS_ADMIN_PASSWORD", "")
+
+        if not username or not display_name or not password:
+            raise click.ClickException(
+                "AEGIS_ADMIN_USERNAME, AEGIS_ADMIN_DISPLAY_NAME, and "
+                "AEGIS_ADMIN_PASSWORD are required"
+            )
+        if len(password) < 12:
+            raise click.ClickException(
+                "AEGIS_ADMIN_PASSWORD must be at least 12 characters"
+            )
+        if User.query.filter_by(username=username).first() is not None:
+            raise click.ClickException(f"User '{username}' already exists")
+
+        user = User(username=username, display_name=display_name)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        click.echo(f"Administrator '{username}' created successfully")
 
     @app.cli.command("sync-project-schema")
     def sync_project_schema():

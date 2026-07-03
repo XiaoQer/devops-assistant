@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-platform-backend
+  namespace: devops-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: devops-platform-backend
+  template:
+    metadata:
+      labels:
+        app: devops-platform-backend
+    spec:
+      serviceAccountName: devops-platform-backend
+      containers:
+        - name: backend
+          image: registry.local/devops-platform-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: devops-platform-database
+                  key: url
+            - name: TEKTON_NAMESPACE
+              value: devops-platform
+            - name: DEFAULT_IMAGE_REGISTRY
+              value: registry.local
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+

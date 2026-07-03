@@ -1,0 +1,3 @@
+[submodule "aegis-springboot-demo"]
+	path = aegis-springboot-demo
+	url = https://github.com/XiaoQer/aegis-springboot-demo.git

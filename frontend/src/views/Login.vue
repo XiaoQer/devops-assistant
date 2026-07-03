@@ -26,6 +26,7 @@
         </el-form-item>
         <el-form-item label="Password" :error="errors.password">
           <el-input
+            :key="passwordInputKey"
             v-model="password"
             type="password"
             show-password
@@ -48,24 +49,19 @@ import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { resolveSafeRedirect } from '../router/safeRedirect'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const username = ref('')
 const password = ref('')
+const passwordInputKey = ref(0)
 const submitting = ref(false)
 const errors = reactive({ username: '', password: '' })
 const sessionUnavailable = computed(() =>
   route.query.session_unavailable !== undefined || route.query.error === 'session_unavailable',
 )
-
-const safeRedirect = () => {
-  const redirect = route.query.redirect
-  return typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
-    ? redirect
-    : '/portal'
-}
 
 const submit = async () => {
   if (submitting.value) return
@@ -76,11 +72,12 @@ const submit = async () => {
   submitting.value = true
   try {
     await auth.login(username.value.trim(), password.value)
-    password.value = ''
-    await router.replace(safeRedirect())
+    await router.replace(resolveSafeRedirect(router, route.query.redirect))
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : 'Unable to sign in')
   } finally {
+    password.value = ''
+    passwordInputKey.value += 1
     submitting.value = false
   }
 }

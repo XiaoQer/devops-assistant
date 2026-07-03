@@ -57,7 +57,7 @@
       </div>
 
       <footer class="sidebar-footer">
-        <CurrentUserMenu />
+        <CurrentUserMenu :compact="uiStore.sidebarCollapsed" />
       </footer>
     </aside>
 

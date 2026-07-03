@@ -7,6 +7,7 @@ from alembic.config import Config as AlembicConfig
 from sqlalchemy import create_engine, inspect
 
 from app import create_app
+from app.extensions import db
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -21,6 +22,12 @@ class TestConfig:
 
 
 class AuthMigrationTest(unittest.TestCase):
+    @staticmethod
+    def _dispose_app_database(app):
+        with app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+
     def test_upgrade_and_downgrade_authentication_tables(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = Path(temporary_directory) / "auth-migration.db"
@@ -29,6 +36,7 @@ class AuthMigrationTest(unittest.TestCase):
                 SQLALCHEMY_DATABASE_URI = f"sqlite:///{database_path}"
 
             app = create_app(DatabaseConfig)
+            self.addCleanup(self._dispose_app_database, app)
             alembic_config = AlembicConfig(str(BACKEND_DIR / "migrations/alembic.ini"))
             alembic_config.set_main_option(
                 "script_location",
@@ -40,6 +48,7 @@ class AuthMigrationTest(unittest.TestCase):
                 command.upgrade(alembic_config, "a7c8d9e0f1a2")
 
             engine = create_engine(DatabaseConfig.SQLALCHEMY_DATABASE_URI)
+            self.addCleanup(engine.dispose)
             inspector = inspect(engine)
             self.assertTrue({"users", "user_sessions"} <= set(inspector.get_table_names()))
             self.assertEqual(
@@ -97,7 +106,6 @@ class AuthMigrationTest(unittest.TestCase):
             remaining_tables = set(inspect(engine).get_table_names())
             self.assertNotIn("users", remaining_tables)
             self.assertNotIn("user_sessions", remaining_tables)
-            engine.dispose()
 
 
 if __name__ == "__main__":

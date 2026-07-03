@@ -1,7 +1,11 @@
+import hashlib
+import importlib
+import os
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+import app.config as config_module
 from app import create_app
 from app.extensions import db
 from app.models import User, UserSession
@@ -19,7 +23,7 @@ class TestConfig:
     AUTO_CREATE_SCHEMA = True
     SECRET_KEY = "auth-model-test-secret"
     TESTING = True
-    AUTH_SESSION_HOURS = 8
+    AUTH_SESSION_HOURS = 13
 
 
 class AuthModelTest(unittest.TestCase):
@@ -142,16 +146,47 @@ class AuthServiceTest(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 401)
         self.assertEqual(raised.exception.code, "AUTHENTICATION_REQUIRED")
 
+    def test_digest_uses_sha256_hex_digest(self):
+        token = "known-session-token"
+
+        self.assertEqual(
+            AuthService.digest(token),
+            hashlib.sha256(token.encode("utf-8")).hexdigest(),
+        )
+
     def test_login_creates_session_with_only_token_digests(self):
-        result = self.service.login("admin", self.password)
+        before_login = datetime.now(timezone.utc)
+        with patch(
+            "app.services.auth_service.secrets.token_urlsafe",
+            side_effect=["raw-session-token", "raw-csrf-token"],
+        ) as token_urlsafe:
+            result = self.service.login("admin", self.password)
+        after_login = datetime.now(timezone.utc)
 
         self.assertEqual(result.user.id, self.user.id)
         self.assertEqual(result.session.user_id, self.user.id)
         self.assertEqual(UserSession.query.count(), 1)
-        self.assertNotEqual(result.session.token_digest, result.session_token)
-        self.assertNotEqual(result.session.csrf_digest, result.csrf_token)
+        self.assertEqual(
+            [item.args for item in token_urlsafe.call_args_list],
+            [(32,), (32,)],
+        )
+        self.assertEqual(result.session_token, "raw-session-token")
+        self.assertEqual(result.csrf_token, "raw-csrf-token")
+        self.assertEqual(
+            result.session.token_digest,
+            AuthService.digest("raw-session-token"),
+        )
+        self.assertEqual(
+            result.session.csrf_digest,
+            AuthService.digest("raw-csrf-token"),
+        )
         self.assertEqual(len(result.session.token_digest), 64)
         self.assertEqual(len(result.session.csrf_digest), 64)
+        expires_at = result.session.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        self.assertGreaterEqual(expires_at, before_login + timedelta(hours=13))
+        self.assertLessEqual(expires_at, after_login + timedelta(hours=13))
 
     def test_login_rejects_wrong_username_password_and_disabled_user_identically(self):
         self.assert_invalid_credentials("missing", self.password)
@@ -215,6 +250,41 @@ class AuthServiceTest(unittest.TestCase):
         persisted = db.session.get(UserSession, result.session.id)
 
         self.assertIsNotNone(persisted.revoked_at)
+
+
+class AuthConfigTest(unittest.TestCase):
+    def tearDown(self):
+        importlib.reload(config_module)
+
+    def test_auth_config_defaults(self):
+        with patch.dict(os.environ, {}, clear=True):
+            config = importlib.reload(config_module).Config
+
+            self.assertEqual(config.AUTH_SESSION_HOURS, 8)
+            self.assertEqual(config.AUTH_COOKIE_NAME, "aegis_session")
+            self.assertEqual(config.AUTH_CSRF_COOKIE_NAME, "aegis_csrf")
+            self.assertFalse(config.AUTH_COOKIE_SECURE)
+            self.assertEqual(config.CORS_ORIGINS, ["http://localhost:5173"])
+
+    def test_auth_config_parses_environment_values(self):
+        environment = {
+            "AUTH_SESSION_HOURS": "12",
+            "AUTH_COOKIE_NAME": "custom_session",
+            "AUTH_CSRF_COOKIE_NAME": "custom_csrf",
+            "AUTH_COOKIE_SECURE": "TrUe",
+            "CORS_ORIGINS": " https://one.example,https://two.example , ",
+        }
+        with patch.dict(os.environ, environment, clear=True):
+            config = importlib.reload(config_module).Config
+
+            self.assertEqual(config.AUTH_SESSION_HOURS, 12)
+            self.assertEqual(config.AUTH_COOKIE_NAME, "custom_session")
+            self.assertEqual(config.AUTH_CSRF_COOKIE_NAME, "custom_csrf")
+            self.assertTrue(config.AUTH_COOKIE_SECURE)
+            self.assertEqual(
+                config.CORS_ORIGINS,
+                ["https://one.example", "https://two.example"],
+            )
 
 
 if __name__ == "__main__":

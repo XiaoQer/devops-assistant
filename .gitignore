@@ -33,3 +33,6 @@ backend/.pytest_cache/
 # Logs
 *.log
 
+# Agent-local workspaces and visual brainstorming artifacts
+.worktrees/
+.superpowers/

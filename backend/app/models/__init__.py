@@ -8,10 +8,12 @@ from .application_environment import ApplicationEnvironment
 from .application_config import ApplicationConfig
 from .approval_record import ApprovalRecord
 from .container_registry import ContainerRegistry
+from .user import User
+from .user_session import UserSession
 
 __all__ = [
     "Application", "PipelineExecution", "Project", "ProjectMember",
     "KubernetesCluster", "ReleaseRecord",
     "ApplicationEnvironment", "ApplicationConfig", "ApprovalRecord",
-    "ContainerRegistry",
+    "ContainerRegistry", "User", "UserSession",
 ]

@@ -9,6 +9,10 @@ from app.extensions import db
 from app.models import User, UserSession
 from app.models.project import utcnow
 from app.utils.errors import ApiError
+from werkzeug.security import check_password_hash, generate_password_hash
+
+
+_DUMMY_PASSWORD_HASH = generate_password_hash(secrets.token_urlsafe(32))
 
 
 @dataclass(frozen=True)
@@ -25,8 +29,10 @@ class AuthService:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     def login(self, username, password):
-        user = User.query.filter_by(username=username, is_active=True).first()
-        if user is None or not user.check_password(password):
+        user = User.query.filter_by(username=username).first()
+        password_hash = user.password_hash if user is not None else _DUMMY_PASSWORD_HASH
+        password_matches = check_password_hash(password_hash, password)
+        if user is None or not user.is_active or not password_matches:
             raise ApiError(
                 "用户名或密码错误",
                 401,

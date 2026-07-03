@@ -12,6 +12,7 @@ from app.models import User, UserSession
 from app.services.auth_service import AuthService
 from app.utils.errors import ApiError
 from sqlalchemy import delete, inspect, text
+from werkzeug.security import check_password_hash
 
 
 class TestConfig:
@@ -189,11 +190,32 @@ class AuthServiceTest(unittest.TestCase):
         self.assertLessEqual(expires_at, after_login + timedelta(hours=13))
 
     def test_login_rejects_wrong_username_password_and_disabled_user_identically(self):
-        self.assert_invalid_credentials("missing", self.password)
-        self.assert_invalid_credentials("admin", "wrong-password")
-        self.user.is_active = False
-        db.session.commit()
-        self.assert_invalid_credentials("admin", self.password)
+        cases = [
+            ("missing", self.password, True),
+            ("admin", "wrong-password", True),
+            ("admin", self.password, False),
+        ]
+        for username, password, is_active in cases:
+            with self.subTest(username=username, password=password):
+                self.user.is_active = is_active
+                db.session.commit()
+                with patch(
+                    "app.services.auth_service.check_password_hash",
+                    create=True,
+                    wraps=check_password_hash,
+                ) as verifier:
+                    self.assert_invalid_credentials(username, password)
+                verifier.assert_called_once()
+
+    def test_login_verifies_successful_password_once(self):
+        with patch(
+            "app.services.auth_service.check_password_hash",
+            create=True,
+            wraps=check_password_hash,
+        ) as verifier:
+            self.service.login("admin", self.password)
+
+        verifier.assert_called_once()
 
     def test_resolve_returns_valid_session_and_user(self):
         result = self.service.login("admin", self.password)

@@ -57,11 +57,7 @@
       </div>
 
       <footer class="sidebar-footer">
-        <div class="avatar">SL</div>
-        <div v-if="!uiStore.sidebarCollapsed" class="profile-copy">
-          <strong>Shaoqian Li</strong>
-          <span>Builder mode</span>
-        </div>
+        <CurrentUserMenu />
       </footer>
     </aside>
 
@@ -101,6 +97,7 @@ import IconRelease from '../components/icons/IconRelease.vue'
 import IconApproval from '../components/icons/IconApproval.vue'
 import IconRegistry from '../components/icons/IconRegistry.vue'
 import IconTheme from '@/components/icons/IconTheme.vue'
+import CurrentUserMenu from '@/components/common/CurrentUserMenu.vue'
 
 const uiStore = useUiStore()
 const commandStore = useCommandStore()
@@ -355,33 +352,6 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, var(--surface-soft), var(--surface-raised));
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.profile-copy strong,
-.profile-copy span {
-  display: block;
-}
-
-.profile-copy strong {
-  font-size: 13px;
-}
-
-.profile-copy span {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .main {

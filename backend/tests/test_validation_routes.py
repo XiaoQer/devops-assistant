@@ -2,7 +2,9 @@ import unittest
 
 from app import create_app
 from app.extensions import db
-from app.models import Application
+from app.models import Application, User
+
+from auth_helpers import create_user, csrf_post, login
 
 
 class TestConfig:
@@ -14,6 +16,10 @@ class TestConfig:
     AUTO_CREATE_SCHEMA = True
     SECRET_KEY = "route-validation-test-secret"
     TESTING = True
+    AUTH_SESSION_HOURS = 8
+    AUTH_COOKIE_NAME = "test_session"
+    AUTH_CSRF_COOKIE_NAME = "test_csrf"
+    AUTH_COOKIE_SECURE = False
 
 
 class RouteValidationTest(unittest.TestCase):
@@ -22,6 +28,9 @@ class RouteValidationTest(unittest.TestCase):
         self.context = self.app.app_context()
         self.context.push()
         self.client = self.app.test_client()
+        create_user(db, User)
+        _response, auth = login(self.client)
+        self.csrf_token = auth["csrf_token"]
         db.session.add(Application(
             name="payment-service",
             repo_url="https://github.com/example/payment-service.git",
@@ -43,7 +52,9 @@ class RouteValidationTest(unittest.TestCase):
         self.context.pop()
 
     def test_ai_intent_route_requires_non_empty_text(self):
-        response = self.client.post("/api/ai/intent/resolve", json={"text": "   "})
+        response = csrf_post(
+            self.client, "/api/ai/intent/resolve", self.csrf_token, json={"text": "   "}
+        )
 
         self.assertEqual(response.status_code, 400)
         body = response.get_json()
@@ -52,13 +63,23 @@ class RouteValidationTest(unittest.TestCase):
         self.assertEqual(body["error"]["details"]["field"], "text")
 
     def test_ai_intent_route_rejects_non_object_payload(self):
-        response = self.client.post("/api/ai/intent/resolve", json=["open payment-service"])
+        response = csrf_post(
+            self.client,
+            "/api/ai/intent/resolve",
+            self.csrf_token,
+            json=["open payment-service"],
+        )
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()["error"]["code"], "INVALID_REQUEST_BODY")
 
     def test_ai_intent_route_still_resolves_known_application(self):
-        response = self.client.post("/api/ai/intent/resolve", json={"text": "打开 payment-service"})
+        response = csrf_post(
+            self.client,
+            "/api/ai/intent/resolve",
+            self.csrf_token,
+            json={"text": "打开 payment-service"},
+        )
 
         self.assertEqual(response.status_code, 200)
         data = response.get_json()["data"]
@@ -66,7 +87,9 @@ class RouteValidationTest(unittest.TestCase):
         self.assertEqual(data["target"]["application_name"], "payment-service")
 
     def test_create_application_requires_name_and_repo_url(self):
-        response = self.client.post("/api/applications", json={})
+        response = csrf_post(
+            self.client, "/api/applications", self.csrf_token, json={}
+        )
 
         self.assertEqual(response.status_code, 400)
         body = response.get_json()
@@ -74,7 +97,7 @@ class RouteValidationTest(unittest.TestCase):
         self.assertEqual(body["error"]["details"]["fields"], ["name", "repo_url"])
 
     def test_submit_approval_requires_application_id(self):
-        response = self.client.post("/api/approvals", json={})
+        response = csrf_post(self.client, "/api/approvals", self.csrf_token, json={})
 
         self.assertEqual(response.status_code, 400)
         body = response.get_json()
@@ -90,7 +113,7 @@ class RouteValidationTest(unittest.TestCase):
         self.assertEqual(body["error"]["details"]["field"], "left")
 
     def test_create_registry_requires_name_and_server(self):
-        response = self.client.post("/api/registries", json={})
+        response = csrf_post(self.client, "/api/registries", self.csrf_token, json={})
 
         self.assertEqual(response.status_code, 400)
         body = response.get_json()
@@ -98,7 +121,9 @@ class RouteValidationTest(unittest.TestCase):
         self.assertEqual(body["error"]["details"]["fields"], ["name", "server"])
 
     def test_deploy_plan_requires_explicit_environment(self):
-        response = self.client.post("/api/applications/1/deploy/plan", json={})
+        response = csrf_post(
+            self.client, "/api/applications/1/deploy/plan", self.csrf_token, json={}
+        )
 
         self.assertEqual(response.status_code, 400)
         body = response.get_json()
@@ -106,7 +131,9 @@ class RouteValidationTest(unittest.TestCase):
         self.assertEqual(body["error"]["details"]["field"], "environment")
 
     def test_deploy_requires_explicit_environment(self):
-        response = self.client.post("/api/applications/1/deploy", json={})
+        response = csrf_post(
+            self.client, "/api/applications/1/deploy", self.csrf_token, json={}
+        )
 
         self.assertEqual(response.status_code, 400)
         body = response.get_json()

@@ -1,3 +1,15 @@
+export interface AuthenticatedUser {
+  id: number
+  username: string
+  display_name: string
+  is_active: boolean
+}
+
+export interface AuthResponse {
+  user: AuthenticatedUser
+  csrf_token: string
+}
+
 export interface Execution {
   id: number
   pipeline_run_name: string

@@ -1,4 +1,4 @@
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
 from app.models import Application, ApplicationEnvironment, ApplicationConfig
 from app.services.environment_service import EnvironmentService
@@ -98,7 +98,7 @@ def create_config(app_id):
     get_env(app_id, environment_id)
     service = ConfigurationService()
     item = service.create(
-        app_id, environment_id, payload, request.headers.get("X-User", "local-user")
+        app_id, environment_id, payload, g.current_user.username
     )
     return success(service.serialize(item), "配置已保存", 201)
 
@@ -111,7 +111,7 @@ def update_config(config_id):
     service = ConfigurationService()
     updated = service.update(
         item, json_object(request.get_json(silent=True), required=True),
-        request.headers.get("X-User", "local-user"),
+        g.current_user.username,
     )
     return success(service.serialize(updated), "配置已更新")
 

@@ -1,12 +1,21 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import type { Pinia } from 'pinia'
 import MainLayout from '../layouts/MainLayout.vue'
 import PortalLayout from '../layouts/PortalLayout.vue'
 import ProjectCenterLayout from '../layouts/ProjectCenterLayout.vue'
 import DevCenterLayout from '../layouts/DevCenterLayout.vue'
+import Login from '../views/Login.vue'
+import { onAuthenticationRequired } from '../api/client'
+import { useAuthStore } from '../stores/auth'
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/login',
+      component: Login,
+      meta: { public: true },
+    },
     {
       path: '/',
       redirect: '/portal',
@@ -130,3 +139,50 @@ export default createRouter({
     },
   ],
 })
+
+let authGuardInstalled = false
+let authenticationCallbackInstalled = false
+
+export const installAuthGuard = (pinia: Pinia) => {
+  if (!authGuardInstalled) {
+    authGuardInstalled = true
+    router.beforeEach(async to => {
+      const auth = useAuthStore(pinia)
+      try {
+        await auth.initialize()
+      } catch {
+        if (to.meta.public) {
+          if (to.query.session_unavailable !== undefined) return true
+          return { path: '/login', query: { ...to.query, session_unavailable: '1' }, replace: true }
+        }
+        return {
+          path: '/login',
+          query: { redirect: to.fullPath, error: 'session_unavailable' },
+          replace: true,
+        }
+      }
+
+      if (to.path === '/login' && auth.user) return '/portal'
+      if (!to.meta.public && !auth.user) {
+        return { path: '/login', query: { redirect: to.fullPath } }
+      }
+      return true
+    })
+  }
+
+  if (!authenticationCallbackInstalled) {
+    authenticationCallbackInstalled = true
+    onAuthenticationRequired(() => {
+      const auth = useAuthStore(pinia)
+      auth.clear()
+      if (router.currentRoute.value.path !== '/login') {
+        void router.replace({
+          path: '/login',
+          query: { redirect: router.currentRoute.value.fullPath },
+        })
+      }
+    })
+  }
+}
+
+export default router

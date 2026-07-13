@@ -1,26 +1,38 @@
+import os
+import secrets
+import uuid
+
+import click
 from flask import Flask
 from flask import g, request
 from flask_cors import CORS
 from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
 from sqlalchemy import inspect, text
-import uuid
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from .config import Config
 from .extensions import db, migrate
+from .models import User
 from .routes import (
     applications_bp, health_bp, pipelines_bp, environments_bp, releases_bp,
-    approvals_bp, registries_bp, ai_bp, projects_bp,
+    approvals_bp, registries_bp, ai_bp, projects_bp, auth_bp,
 )
 from .utils.errors import ApiError
 from .utils.response import failure
 from .services.release_service import ReleaseService
+from .services.auth_service import AuthService
 
 
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
-    CORS(app)
+    CORS(
+        app,
+        origins=app.config.get("CORS_ORIGINS", Config.CORS_ORIGINS),
+        supports_credentials=True,
+    )
     db.init_app(app)
     migrate.init_app(app, db)
 
@@ -38,14 +50,50 @@ def create_app(config_class=Config):
     app.register_blueprint(registries_bp)
     app.register_blueprint(ai_bp)
     app.register_blueprint(projects_bp)
+    app.register_blueprint(auth_bp)
 
     @app.before_request
     def attach_trace_id():
         g.trace_id = request.headers.get("X-Trace-ID") or str(uuid.uuid4())
 
+    @app.before_request
+    def authenticate_api_request():
+        if (
+            not request.path.startswith("/api")
+            or request.method == "OPTIONS"
+            or request.blueprint == "health"
+            or request.endpoint == "auth.login"
+        ):
+            return None
+
+        auth_service = AuthService()
+        session = auth_service.resolve(
+            request.cookies.get(app.config["AUTH_COOKIE_NAME"])
+        )
+        g.current_session = session
+        g.current_user = session.user
+
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            csrf_header = request.headers.get("X-CSRF-Token")
+            csrf_cookie = request.cookies.get(app.config["AUTH_CSRF_COOKIE_NAME"])
+            csrf_tokens_match = bool(
+                csrf_header and csrf_cookie
+            ) and secrets.compare_digest(csrf_header, csrf_cookie)
+            if not csrf_tokens_match or not auth_service.verify_csrf(
+                session, csrf_header
+            ):
+                raise ApiError(
+                    "CSRF 校验失败",
+                    403,
+                    "CSRF_VALIDATION_FAILED",
+                )
+        return None
+
     @app.after_request
     def return_trace_id(response):
         response.headers["X-Trace-ID"] = getattr(g, "trace_id", "")
+        if request.blueprint == "auth":
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     @app.cli.command("sync-deliveries")
@@ -53,6 +101,38 @@ def create_app(config_class=Config):
         """Synchronize pending Tekton runs into delivery records."""
         count = ReleaseService().sync_all()
         print(f"Synced {count} pending delivery records")
+
+    @app.cli.command("create-admin")
+    def create_admin():
+        """Create the initial administrator from environment variables."""
+        username = os.environ.get("AEGIS_ADMIN_USERNAME", "").strip()
+        display_name = os.environ.get("AEGIS_ADMIN_DISPLAY_NAME", "").strip()
+        password = os.environ.get("AEGIS_ADMIN_PASSWORD", "")
+
+        if not username or not display_name or not password:
+            raise click.ClickException(
+                "Administrator credentials are required"
+            )
+        if len(username) > 120 or len(display_name) > 120:
+            raise click.ClickException("Administrator profile is invalid")
+        if not password.strip() or not 12 <= len(password) <= 4096:
+            raise click.ClickException("Administrator password is invalid")
+
+        try:
+            if User.query.filter_by(username=username).first() is not None:
+                raise click.ClickException("admin already exists")
+
+            user = User(username=username, display_name=display_name)
+            user.set_password(password)
+            db.session.add(user)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            raise click.ClickException("admin already exists") from None
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise click.ClickException("failed to create admin") from None
+        click.echo(f"Administrator '{username}' created successfully")
 
     @app.cli.command("sync-project-schema")
     def sync_project_schema():
@@ -154,6 +234,10 @@ def create_app(config_class=Config):
     @app.errorhandler(404)
     def handle_not_found(_exc):
         return failure("接口不存在", "NOT_FOUND", 404)
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_request_too_large(_exc):
+        return failure("请求体过大", "REQUEST_TOO_LARGE", 413)
 
     @app.errorhandler(ConfigException)
     def handle_kubernetes_config_error(exc):

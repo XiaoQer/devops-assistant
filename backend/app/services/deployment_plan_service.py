@@ -23,7 +23,7 @@ class DeploymentPlanService:
 
         pipeline_name = ApplicationService.PIPELINES.get((app.language, app.build_type))
         image_tag = str(payload.get("image_tag", app.image_tag) or app.image_tag)
-        registry = RegistryService().get_default()
+        registry = RegistryService().get_default(app.project_id)
         image_name = app.image_name
         if environment:
             if registry:
@@ -280,4 +280,3 @@ class DeploymentPlanService:
                 f"{'高' if risk_level == 'high' else ''}风险提示。"
             )
         return f"{environment_name} 环境的发布前检查已通过，可以直接执行部署。"
-

@@ -7,6 +7,8 @@ from app.models import (
     Application,
     ApplicationConfig,
     ApplicationEnvironment,
+    ContainerRegistry,
+    Project,
     ReleaseRecord,
     User,
 )
@@ -135,6 +137,54 @@ class DeploymentPlanServiceTest(unittest.TestCase):
 
         self.assertFalse(plan["can_deploy"])
         self.assertIn("environment", plan["blocked_checks"])
+
+    def test_build_plan_uses_application_project_default_registry(self):
+        project = Project(key="payments", name="Payments")
+        other_project = Project(key="platform", name="Platform")
+        db.session.add_all([project, other_project])
+        db.session.flush()
+        app = self._create_application()
+        app.project_id = project.id
+        db.session.add(ApplicationEnvironment(
+            application_id=app.id,
+            environment_name="dev",
+            namespace="payment-service-dev",
+            status="Healthy",
+        ))
+        db.session.add_all([
+            ContainerRegistry(
+                project_id=project.id,
+                name="Payments GHCR",
+                provider="ghcr",
+                server="ghcr.io",
+                namespace="acme-payments",
+                username="robot",
+                encrypted_password="ciphertext",
+                is_default=True,
+            ),
+            ContainerRegistry(
+                project_id=other_project.id,
+                name="Platform Harbor",
+                provider="harbor",
+                server="harbor.platform.example",
+                namespace="platform",
+                username="robot",
+                encrypted_password="ciphertext",
+                is_default=True,
+            ),
+        ])
+        db.session.commit()
+
+        plan = DeploymentPlanService().build_plan(app, {"environment": "dev"})
+
+        self.assertEqual(
+            plan["target"]["image_name"],
+            "ghcr.io/acme-payments/payment-service-1",
+        )
+        registry_check = next(
+            check for check in plan["checks"] if check["name"] == "registry"
+        )
+        self.assertEqual(registry_check["status"], "pass")
 
     @patch("app.services.application_service.TektonService.create_pipeline_run")
     @patch("app.services.application_service.ConfigurationService.materialize")

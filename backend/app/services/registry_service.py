@@ -138,10 +138,10 @@ class RegistryService:
                 400,
                 "REGISTRY_CREDENTIALS_REQUIRED",
             )
-        skip_tls_verify = bool(payload.get(
-            "skip_tls_verify",
+        skip_tls_verify = self._tls_setting(
+            payload,
             current.skip_tls_verify if current else False,
-        ))
+        )
         return self.connectivity_client.test(
             server,
             username,
@@ -200,8 +200,6 @@ class RegistryService:
             )
         if provider not in self.PROVIDERS:
             raise ApiError("不支持的镜像仓库类型")
-        if "/" in server or not urlparse(f"//{server}").hostname:
-            raise ApiError("server 只能填写仓库域名，例如 company.azurecr.io")
         return {
             "name": name,
             "provider": provider,
@@ -215,10 +213,10 @@ class RegistryService:
                 "pull_secret_name",
                 current.pull_secret_name if current else "aegis-registry-credentials",
             ) or "aegis-registry-credentials",
-            "skip_tls_verify": bool(payload.get(
-                "skip_tls_verify",
+            "skip_tls_verify": self._tls_setting(
+                payload,
                 current.skip_tls_verify if current else False,
-            )),
+            ),
             "is_default": bool(payload.get(
                 "is_default", current.is_default if current else False
             )),
@@ -230,7 +228,52 @@ class RegistryService:
     @staticmethod
     def _normalize_server(value):
         server = str(value or "").strip()
-        return server.removeprefix("https://").removeprefix("http://").rstrip("/")
+        if "://" in server:
+            parsed = urlparse(server)
+            if parsed.scheme.lower() != "https":
+                raise ApiError(
+                    "Registry Server 必须使用 HTTPS",
+                    400,
+                    "REGISTRY_SERVER_INVALID",
+                )
+            server = server[len(parsed.scheme) + 3:]
+        server = server.rstrip("/")
+        parsed = urlparse(f"//{server}")
+        try:
+            parsed.port
+        except ValueError as exc:
+            raise ApiError(
+                "server 只能填写仓库域名或域名:端口",
+                400,
+                "REGISTRY_SERVER_INVALID",
+            ) from exc
+        if (
+            not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ApiError(
+                "server 只能填写仓库域名或域名:端口",
+                400,
+                "REGISTRY_SERVER_INVALID",
+            )
+        return server
+
+    @staticmethod
+    def _tls_setting(payload, current=False):
+        if "skip_tls_verify" not in payload:
+            return current
+        value = payload["skip_tls_verify"]
+        if not isinstance(value, bool):
+            raise ApiError(
+                "skip_tls_verify 必须是布尔值",
+                400,
+                "REGISTRY_TLS_VERIFY_INVALID",
+            )
+        return value
 
     @staticmethod
     def _reset_connection_state(item):

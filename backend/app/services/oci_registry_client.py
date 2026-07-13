@@ -4,7 +4,7 @@ import json
 import re
 import socket
 import ssl
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 import urllib3
 from urllib3.exceptions import (
@@ -32,7 +32,6 @@ class OCIRegistryClient:
         tls_verified = not skip_tls_verify
         try:
             registry_url = self._registry_url(server)
-            self._validate_target(registry_url)
             basic_header = self._basic_authorization(username, token)
             response = self._request(
                 "GET",
@@ -40,11 +39,16 @@ class OCIRegistryClient:
                 headers={"Authorization": basic_header},
                 skip_tls_verify=skip_tls_verify,
             )
-            if self._successful(response):
+            status = response.status
+            challenge = self._header(response.headers, "www-authenticate")
+            self._discard_response(response)
+            if 200 <= status < 300:
                 return self._success("basic", tls_verified)
-            if response.status in {401, 403}:
+            if status == 403:
+                return self._failure("authentication_failed", tls_verified)
+            if status == 401:
                 return self._authenticate_challenge(
-                    response,
+                    challenge,
                     registry_url,
                     basic_header,
                     skip_tls_verify,
@@ -66,13 +70,12 @@ class OCIRegistryClient:
 
     def _authenticate_challenge(
         self,
-        response,
+        challenge,
         registry_url,
         basic_header,
         skip_tls_verify,
         tls_verified,
     ):
-        challenge = self._header(response.headers, "www-authenticate")
         if not challenge:
             return self._failure("protocol_error", tls_verified)
         scheme, _, parameters = challenge.partition(" ")
@@ -88,7 +91,6 @@ class OCIRegistryClient:
         realm = values.get("realm")
         if not realm:
             return self._failure("protocol_error", tls_verified)
-        self._validate_target(realm)
         fields = {
             key: values[key]
             for key in ("service", "scope")
@@ -102,12 +104,15 @@ class OCIRegistryClient:
             skip_tls_verify=skip_tls_verify,
         )
         if token_response.status in {401, 403}:
+            self._discard_response(token_response)
             return self._failure("authentication_failed", tls_verified)
         if not self._successful(token_response):
+            self._discard_response(token_response)
             return self._failure("protocol_error", tls_verified)
-        if len(token_response.data or b"") > self.MAX_TOKEN_RESPONSE_BYTES:
+        token_data = self._read_limited(token_response)
+        if token_data is None:
             return self._failure("protocol_error", tls_verified)
-        document = json.loads((token_response.data or b"").decode("utf-8"))
+        document = json.loads(token_data.decode("utf-8"))
         if not isinstance(document, dict):
             return self._failure("protocol_error", tls_verified)
         bearer_token = document.get("token") or document.get("access_token")
@@ -120,43 +125,68 @@ class OCIRegistryClient:
             headers={"Authorization": f"Bearer {bearer_token}"},
             skip_tls_verify=skip_tls_verify,
         )
-        if self._successful(authenticated):
+        authenticated_status = authenticated.status
+        self._discard_response(authenticated)
+        if 200 <= authenticated_status < 300:
             return self._success("bearer", tls_verified)
-        if authenticated.status in {401, 403}:
+        if authenticated_status in {401, 403}:
             return self._failure("authentication_failed", tls_verified)
         return self._failure("protocol_error", tls_verified)
 
     def _request(self, method, url, headers, skip_tls_verify, fields=None):
+        parsed, resolved_ip = self._validated_target(url)
         return self._requester(
             method,
             url,
             headers=headers,
             fields=fields or {},
             skip_tls_verify=skip_tls_verify,
+            resolved_ip=resolved_ip,
+            server_hostname=parsed.hostname,
         )
 
     @staticmethod
-    def _urllib3_request(method, url, headers, fields, skip_tls_verify):
-        manager = urllib3.PoolManager(
-            cert_reqs="CERT_NONE" if skip_tls_verify else "CERT_REQUIRED"
+    def _urllib3_request(
+        method,
+        url,
+        headers,
+        fields,
+        skip_tls_verify,
+        resolved_ip,
+        server_hostname,
+    ):
+        parsed = urlparse(url)
+        port = parsed.port or 443
+        pool = urllib3.HTTPSConnectionPool(
+            resolved_ip,
+            port,
+            cert_reqs="CERT_NONE" if skip_tls_verify else "CERT_REQUIRED",
+            assert_hostname=False if skip_tls_verify else server_hostname,
+            server_hostname=server_hostname,
         )
-        return manager.request(
+        query = parse_qsl(parsed.query, keep_blank_values=True)
+        query.extend((key, value) for key, value in fields.items())
+        target = parsed.path or "/"
+        if query:
+            target = f"{target}?{urlencode(query)}"
+        request_headers = {**headers, "Host": parsed.netloc}
+        return pool.request(
             method,
-            url,
-            headers=headers,
-            fields=fields,
+            target,
+            headers=request_headers,
             timeout=urllib3.Timeout(connect=5.0, read=10.0),
             retries=False,
             redirect=False,
+            preload_content=False,
         )
 
     @staticmethod
     def _registry_url(server):
         value = str(server or "").strip().rstrip("/")
-        parsed_input = urlparse(value)
-        if parsed_input.scheme and parsed_input.scheme.lower() != "https":
-            raise UnsafeRegistryTarget()
-        if parsed_input.scheme:
+        if "://" in value:
+            parsed_input = urlparse(value)
+            if parsed_input.scheme.lower() != "https":
+                raise UnsafeRegistryTarget()
             if parsed_input.path or parsed_input.query or parsed_input.fragment:
                 raise UnsafeRegistryTarget()
             base_url = value
@@ -164,7 +194,7 @@ class OCIRegistryClient:
             base_url = f"https://{value}"
         return f"{base_url}/v2/"
 
-    def _validate_target(self, url):
+    def _validated_target(self, url):
         parsed = urlparse(url)
         if (
             parsed.scheme.lower() != "https"
@@ -187,6 +217,37 @@ class OCIRegistryClient:
             addresses = [ipaddress.ip_address(item[4][0]) for item in resolved]
         if not addresses or any(self._unsafe_address(address) for address in addresses):
             raise UnsafeRegistryTarget()
+        return parsed, str(addresses[0])
+
+    def _read_limited(self, response):
+        content_length = self._header(response.headers, "content-length")
+        if content_length:
+            try:
+                if int(content_length) > self.MAX_TOKEN_RESPONSE_BYTES:
+                    self._discard_response(response)
+                    return None
+            except ValueError:
+                pass
+        try:
+            reader = getattr(response, "read", None)
+            if callable(reader):
+                data = reader(self.MAX_TOKEN_RESPONSE_BYTES + 1)
+            else:
+                data = response.data or b""
+        finally:
+            self._discard_response(response)
+        if len(data) > self.MAX_TOKEN_RESPONSE_BYTES:
+            return None
+        return data
+
+    @staticmethod
+    def _discard_response(response):
+        closer = getattr(response, "close", None)
+        if callable(closer):
+            closer()
+        releaser = getattr(response, "release_conn", None)
+        if callable(releaser):
+            releaser()
 
     @staticmethod
     def _unsafe_address(address):

@@ -158,6 +158,39 @@ class RouteValidationTest(unittest.TestCase):
             ["server", "username", "password"],
         )
 
+        http_server = csrf_post(
+            self.client,
+            path,
+            self.csrf_token,
+            json={
+                "server": "http://harbor.example.test",
+                "username": "robot",
+                "password": "safe-test-value",
+            },
+        )
+        self.assertEqual(http_server.status_code, 400)
+        self.assertEqual(
+            http_server.get_json()["error"]["code"],
+            "REGISTRY_SERVER_INVALID",
+        )
+
+        non_boolean_tls = csrf_post(
+            self.client,
+            path,
+            self.csrf_token,
+            json={
+                "server": "harbor.example.test",
+                "username": "robot",
+                "password": "safe-test-value",
+                "skip_tls_verify": "false",
+            },
+        )
+        self.assertEqual(non_boolean_tls.status_code, 400)
+        self.assertEqual(
+            non_boolean_tls.get_json()["error"]["code"],
+            "REGISTRY_TLS_VERIFY_INVALID",
+        )
+
     def test_cluster_connection_requires_object_and_write_only_fields(self):
         non_object = csrf_post(
             self.client,

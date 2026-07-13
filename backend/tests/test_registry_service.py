@@ -128,6 +128,68 @@ class RegistryServiceTest(unittest.TestCase):
         ))
         self.assertEqual(item.provider, "ghcr")
 
+    def test_http_registry_is_rejected_instead_of_silently_upgraded(self):
+        service = RegistryService(FakeConnectivityClient())
+
+        with self.assertRaises(ApiError) as create_error:
+            service.create(self.project, self.payload(
+                server="http://harbor.example.test"
+            ))
+        self.assertEqual(create_error.exception.code, "REGISTRY_SERVER_INVALID")
+
+        with self.assertRaises(ApiError) as test_error:
+            service.test_connection({
+                "server": "http://harbor.example.test",
+                "username": "robot",
+                "password": "client-secret",
+            })
+        self.assertEqual(test_error.exception.code, "REGISTRY_SERVER_INVALID")
+
+        for server in (
+            "harbor.example.test/team",
+            "harbor.example.test?scope=admin",
+        ):
+            with self.subTest(server=server):
+                with self.assertRaises(ApiError) as malformed_error:
+                    service.test_connection({
+                        "server": server,
+                        "username": "robot",
+                        "password": "client-secret",
+                    })
+                self.assertEqual(
+                    malformed_error.exception.code,
+                    "REGISTRY_SERVER_INVALID",
+                )
+
+    def test_skip_tls_verify_requires_a_json_boolean(self):
+        service = RegistryService(FakeConnectivityClient())
+        item = service.create(self.project, self.payload())
+
+        for operation in (
+            lambda: service.create(
+                self.other_project,
+                self.payload(skip_tls_verify="false"),
+            ),
+            lambda: service.update(item, {"skip_tls_verify": "false"}),
+            lambda: service.test_connection({
+                "server": "ghcr.io",
+                "username": "octocat",
+                "password": "github-pat",
+                "skip_tls_verify": "false",
+            }),
+            lambda: service.test_connection(
+                {"skip_tls_verify": "false"},
+                current=item,
+            ),
+        ):
+            with self.subTest(operation=operation):
+                with self.assertRaises(ApiError) as error:
+                    operation()
+                self.assertEqual(
+                    error.exception.code,
+                    "REGISTRY_TLS_VERIFY_INVALID",
+                )
+
     def test_update_keeps_existing_token_when_password_is_blank(self):
         service = RegistryService()
         item = service.create(self.project, self.payload())

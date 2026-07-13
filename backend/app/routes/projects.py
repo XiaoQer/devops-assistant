@@ -3,6 +3,7 @@ from flask import Blueprint, request
 from app.models import Project
 from app.services.kubernetes_cluster_service import KubernetesClusterService
 from app.services.project_service import ProjectService
+from app.services.registry_service import RegistryService
 from app.utils.response import success
 from app.utils.validation import json_object, require_fields
 
@@ -10,6 +11,7 @@ bp = Blueprint("projects", __name__, url_prefix="/api/projects")
 
 project_service = ProjectService()
 cluster_service = KubernetesClusterService()
+registry_service = RegistryService()
 
 
 def get_project(project_id):
@@ -141,4 +143,64 @@ def test_saved_cluster_connection(project_id, cluster_id):
     result = cluster_service.test_saved_connection(
         cluster_service.get(project, cluster_id)
     )
+    return success(result, result["message"])
+
+
+@bp.get("/<int:project_id>/registries")
+def list_registries(project_id):
+    project = get_project(project_id)
+    return success([item.to_dict() for item in registry_service.list(project)])
+
+
+@bp.post("/<int:project_id>/registries/test-connection")
+def test_registry_connection(project_id):
+    get_project(project_id)
+    payload = json_object(request.get_json(silent=True), required=True)
+    require_fields(payload, "server", "username", "password")
+    result = registry_service.test_connection(payload)
+    return success(result, result["message"])
+
+
+@bp.post("/<int:project_id>/registries")
+def create_registry(project_id):
+    project = get_project(project_id)
+    payload = json_object(request.get_json(silent=True), required=True)
+    require_fields(payload, "name", "server", "username", "password")
+    item = registry_service.create(project, payload)
+    return success(item.to_dict(), "镜像仓库已创建", 201)
+
+
+@bp.patch("/<int:project_id>/registries/<int:registry_id>")
+def update_registry(project_id, registry_id):
+    project = get_project(project_id)
+    item = registry_service.update(
+        registry_service.get(project, registry_id),
+        json_object(request.get_json(silent=True), required=True),
+    )
+    return success(item.to_dict(), "镜像仓库已更新")
+
+
+@bp.delete("/<int:project_id>/registries/<int:registry_id>")
+def delete_registry(project_id, registry_id):
+    project = get_project(project_id)
+    registry_service.delete(registry_service.get(project, registry_id))
+    return success(None, "镜像仓库已删除")
+
+
+@bp.post("/<int:project_id>/registries/<int:registry_id>/default")
+def set_default_registry(project_id, registry_id):
+    project = get_project(project_id)
+    item = registry_service.set_default(registry_service.get(project, registry_id))
+    return success(item.to_dict(), "默认镜像仓库已更新")
+
+
+@bp.post("/<int:project_id>/registries/<int:registry_id>/test-connection")
+def test_saved_registry_connection(project_id, registry_id):
+    project = get_project(project_id)
+    item = registry_service.get(project, registry_id)
+    payload = json_object(request.get_json(silent=True))
+    if payload:
+        result = registry_service.test_connection(payload, current=item)
+    else:
+        result = registry_service.test_saved_connection(item)
     return success(result, result["message"])

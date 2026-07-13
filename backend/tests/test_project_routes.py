@@ -333,29 +333,170 @@ class ProjectRoutesTest(unittest.TestCase):
         self.assertEqual(cross_project.get_json()["error"]["code"], "CLUSTER_NOT_FOUND")
         test_saved_connection.assert_called_once()
 
-    def test_registry_list_is_project_scoped(self):
-        db.session.add_all([
-            ContainerRegistry(
-                project_id=self.project_id,
-                name="Payments Harbor",
-                provider="harbor",
-                server="harbor.payments.local",
-            ),
-            ContainerRegistry(
-                project_id=self.other_project_id,
-                name="Platform ACR",
-                provider="acr",
-                server="platform.azurecr.io",
-            ),
-        ])
-        db.session.commit()
+    @staticmethod
+    def registry_payload(name="Payments Harbor", **overrides):
+        payload = {
+            "name": name,
+            "provider": "harbor",
+            "server": "harbor.payments.example",
+            "namespace": "payments",
+            "username": "robot$payments",
+            "password": "fake-registry-token",
+            "skip_tls_verify": False,
+            "is_active": True,
+        }
+        payload.update(overrides)
+        return payload
 
-        response = self.client.get("/api/registries", query_string={"projectId": self.project_id})
+    def test_registry_crud_is_project_scoped_and_secret_safe(self):
+        created = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/registries",
+            self.csrf_token,
+            json=self.registry_payload(),
+        )
+        self.assertEqual(created.status_code, 201)
+        registry = created.get_json()["data"]
+        registry_id = registry["id"]
+        self.assertNotIn("fake-registry-token", str(created.get_json()))
+        self.assertNotIn("encrypted_password", registry)
+
+        listed = self.client.get(
+            f"/api/projects/{self.project_id}/registries"
+        )
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual([item["id"] for item in listed.get_json()["data"]], [registry_id])
+
+        updated = self.client.patch(
+            f"/api/projects/{self.project_id}/registries/{registry_id}",
+            headers={"X-CSRF-Token": self.csrf_token},
+            json={"name": "Payments Registry", "password": ""},
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.get_json()["data"]["name"], "Payments Registry")
+
+        second = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/registries",
+            self.csrf_token,
+            json=self.registry_payload("Payments GHCR", provider="ghcr", server="ghcr.io"),
+        ).get_json()["data"]
+        defaulted = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/registries/{second['id']}/default",
+            self.csrf_token,
+        )
+        self.assertEqual(defaulted.status_code, 200)
+        self.assertTrue(defaulted.get_json()["data"]["is_default"])
+
+        for method, suffix in [
+            ("patch", ""),
+            ("post", "/default"),
+            ("delete", ""),
+        ]:
+            with self.subTest(method=method):
+                response = self.client.open(
+                    f"/api/projects/{self.other_project_id}/registries/{registry_id}{suffix}",
+                    method=method.upper(),
+                    headers={"X-CSRF-Token": self.csrf_token},
+                    json={"name": "Cross Project"} if method == "patch" else None,
+                )
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response.get_json()["error"]["code"], "REGISTRY_NOT_FOUND")
+
+        deleted = self.client.delete(
+            f"/api/projects/{self.project_id}/registries/{registry_id}",
+            headers={"X-CSRF-Token": self.csrf_token},
+        )
+        self.assertEqual(deleted.status_code, 200)
+        self.assertIsNone(db.session.get(ContainerRegistry, registry_id))
+
+        self.assertEqual(self.client.get("/api/registries").status_code, 404)
+
+    @patch("app.routes.projects.registry_service.test_connection")
+    def test_transient_registry_connection_uses_envelope_without_persisting(
+        self, test_connection
+    ):
+        test_connection.return_value = {
+            "connected": True,
+            "message": "Registry 连接与认证成功",
+            "tls_verified": True,
+            "auth_method": "bearer",
+        }
+        payload = self.registry_payload()
+
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/registries/test-connection",
+            self.csrf_token,
+            json=payload,
+        )
 
         self.assertEqual(response.status_code, 200)
-        items = response.get_json()["data"]
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["project_id"], self.project_id)
+        self.assertEqual(
+            set(response.get_json()),
+            {"success", "message", "data", "timestamp", "trace_id"},
+        )
+        self.assertTrue(response.get_json()["data"]["connected"])
+        self.assertEqual(ContainerRegistry.query.count(), 0)
+        test_connection.assert_called_once_with(payload)
+
+    @patch("app.routes.projects.registry_service.test_connection")
+    @patch("app.routes.projects.registry_service.test_saved_connection")
+    def test_saved_registry_connection_and_edit_override_are_project_scoped(
+        self, test_saved_connection, test_connection
+    ):
+        created = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/registries",
+            self.csrf_token,
+            json=self.registry_payload(),
+        ).get_json()["data"]
+        registry_id = created["id"]
+        test_saved_connection.return_value = {
+            "connected": False,
+            "message": "Registry 网络不可达",
+            "tls_verified": True,
+            "failure_reason": "unreachable",
+        }
+
+        saved = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/registries/{registry_id}/test-connection",
+            self.csrf_token,
+        )
+        self.assertEqual(saved.status_code, 200)
+        self.assertFalse(saved.get_json()["data"]["connected"])
+        test_saved_connection.assert_called_once()
+
+        override = {"server": "ghcr.io", "username": "octocat", "password": ""}
+        test_connection.return_value = {
+            "connected": True,
+            "message": "Registry 连接与认证成功",
+            "tls_verified": True,
+            "auth_method": "bearer",
+        }
+        preview = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/registries/{registry_id}/test-connection",
+            self.csrf_token,
+            json=override,
+        )
+        self.assertEqual(preview.status_code, 200)
+        current = test_connection.call_args.kwargs["current"]
+        self.assertEqual(current.id, registry_id)
+        self.assertEqual(test_connection.call_args.args[0], override)
+
+        cross_project = csrf_post(
+            self.client,
+            f"/api/projects/{self.other_project_id}/registries/{registry_id}/test-connection",
+            self.csrf_token,
+        )
+        self.assertEqual(cross_project.status_code, 404)
+        self.assertEqual(
+            cross_project.get_json()["error"]["code"],
+            "REGISTRY_NOT_FOUND",
+        )
 
     def test_applications_list_is_project_scoped(self):
         db.session.add_all([

@@ -115,13 +115,48 @@ class RouteValidationTest(unittest.TestCase):
         self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
         self.assertEqual(body["error"]["details"]["field"], "left")
 
-    def test_create_registry_requires_name_and_server(self):
-        response = csrf_post(self.client, "/api/registries", self.csrf_token, json={})
+    def test_create_registry_requires_configuration_and_credentials(self):
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/registries",
+            self.csrf_token,
+            json={},
+        )
 
         self.assertEqual(response.status_code, 400)
         body = response.get_json()
         self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
-        self.assertEqual(body["error"]["details"]["fields"], ["name", "server"])
+        self.assertEqual(
+            body["error"]["details"]["fields"],
+            ["name", "server", "username", "password"],
+        )
+
+    def test_registry_connection_requires_object_and_write_only_fields(self):
+        path = f"/api/projects/{self.project_id}/registries/test-connection"
+        non_object = csrf_post(
+            self.client,
+            path,
+            self.csrf_token,
+            json=["not-an-object"],
+        )
+        self.assertEqual(non_object.status_code, 400)
+        self.assertEqual(
+            non_object.get_json()["error"]["code"],
+            "INVALID_REQUEST_BODY",
+        )
+
+        missing = csrf_post(
+            self.client,
+            path,
+            self.csrf_token,
+            json={},
+        )
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.get_json()["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(
+            missing.get_json()["error"]["details"]["fields"],
+            ["server", "username", "password"],
+        )
 
     def test_cluster_connection_requires_object_and_write_only_fields(self):
         non_object = csrf_post(

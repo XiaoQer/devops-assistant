@@ -4,10 +4,17 @@ from app.utils.errors import ApiError
 
 
 class ProjectService:
+    SYSTEM_DEFAULT_KEY = "default"
     MEMBER_ROLES = {"owner", "admin", "developer", "viewer"}
     PROJECT_STATUSES = {"active", "inactive", "archived"}
     GITHUB_VISIBILITIES = {"private", "internal", "public"}
     ALIYUN_BINDING_STATUSES = {"unbound", "pending", "linked", "failed"}
+    CREATE_DEFAULTS = {
+        "status": "active",
+        "github_default_visibility": "private",
+        "aliyun_region": "cn-hangzhou",
+        "aliyun_binding_status": "unbound",
+    }
     SENSITIVE_KEY_PARTS = ("secret", "token", "password", "access_key", "kubeconfig")
     METADATA_FIELDS = {
         "status",
@@ -32,7 +39,12 @@ class ProjectService:
     }
 
     def list(self):
-        return Project.query.order_by(Project.created_at.desc()).all()
+        return (
+            Project.query
+            .filter(Project.key != self.SYSTEM_DEFAULT_KEY)
+            .order_by(Project.created_at.desc())
+            .all()
+        )
 
     def get(self, project_id):
         project = Project.query.get(project_id)
@@ -52,7 +64,7 @@ class ProjectService:
             key=key,
             name=name,
             description=payload.get("description"),
-            **self._metadata_values(payload),
+            **self._metadata_values({**self.CREATE_DEFAULTS, **payload}),
         )
         db.session.add(project)
         db.session.flush()
@@ -154,10 +166,14 @@ class ProjectService:
         return member
 
     def ensure_default_project(self):
-        project = Project.query.filter_by(key="default").first()
+        project = Project.query.filter_by(key=self.SYSTEM_DEFAULT_KEY).first()
         if project:
             return project
-        project = Project(key="default", name="Default Project", description="系统默认项目")
+        project = Project(
+            key=self.SYSTEM_DEFAULT_KEY,
+            name="Default Project",
+            description="系统默认项目",
+        )
         db.session.add(project)
         db.session.commit()
         return project

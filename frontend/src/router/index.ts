@@ -54,6 +54,16 @@ const router = createRouter({
           meta: { title: 'Members & Permissions', resource: 'members' },
         },
         {
+          path: 'projects/:id/clusters',
+          component: () => import('../views/ProjectKubernetesSettings.vue'),
+          meta: { title: 'Kubernetes' },
+        },
+        {
+          path: 'projects/:id/registries',
+          component: () => import('../views/ProjectRegistriesSettings.vue'),
+          meta: { title: 'Registries' },
+        },
+        {
           path: 'projects/:id/applications',
           component: () => import('../views/DevProjectWorkspace.vue'),
           meta: { title: 'Applications' },

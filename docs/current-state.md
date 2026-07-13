@@ -13,6 +13,13 @@
 - 项目 CRUD、成员管理、Kubernetes 集群管理和项目级镜像仓库。
 - Project 本体保存治理和外部资源绑定元信息，包括业务负责人、成本负责人、GitHub
   组边界、仓库默认可见性、Aliyun 账号、资源组、区域、VPC 和绑定状态。
+- Project 列表默认隐藏系统兜底 Project；Project 详情页按基础信息、Owner、GitHub
+  和 Aliyun 分类展示 Project 本体治理元信息，并支持分类进入编辑态。详情页使用
+  后台详情摘要栏、单列设置面板和关联资源列表呈现，Project Name 和 Project Key 在详情页只读。
+  Kubernetes 集群和 Registry 已在 Project Center 中作为独立项目级菜单管理，成员和应用
+  不再嵌入 Project 详情页。
+- Project Center 提供统一的浅色紧凑弹窗表单样式基座，Kubernetes 集群和 Registry
+  新增/编辑弹窗已接入统一 Dialog/Form 样式。
 - 基于代码仓库创建应用，并分析 Java、Node.js 或 Dockerfile 项目。
 - 应用环境和配置的增删改查、克隆、比较与导出。
 - 部署计划、Tekton PipelineRun 创建、重试、结构化状态和日志。
@@ -32,11 +39,11 @@
 ## Harness 基线验证结果
 
 - `./scripts/verify.sh` 于 2026-07-13 执行成功。
-- 后端 83 个测试全部通过。
+- 后端 85 个测试全部通过。
 - 前端类型检查和生产构建通过。
-- 后端测试产生 29 条警告：12 条 Flask-SQLAlchemy `get_engine()` 弃用警告和
-  17 条 SQLAlchemy `Query.get()` 旧 API 警告。
-- 前端构建转换 1796 个模块并成功产出生产包；Rollup 报告 2 条依赖注释位置提示，
+- 后端测试产生 31 条警告：12 条 Flask-SQLAlchemy `get_engine()` 弃用警告和
+  19 条 SQLAlchemy `Query.get()` 旧 API 警告。
+- 前端构建转换 1803 个模块并成功产出生产包；Rollup 报告 2 条依赖注释位置提示，
   并报告一个超过 500 kB 的 JavaScript 分包。这些是构建警告，不是构建失败。
 - 独立的临时 SQLite 自动迁移测试完成 `f1a2b3c4d5e6` stamp、升级到
   `a7c8d9e0f1a2` 并降级回 `f1a2b3c4d5e6`；未对用户数据库执行降级。

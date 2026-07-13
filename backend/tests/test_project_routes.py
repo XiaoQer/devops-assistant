@@ -64,6 +64,47 @@ class ProjectRoutesTest(unittest.TestCase):
         self.assertEqual(len(members), 1)
         self.assertEqual(members[0]["role"], "owner")
 
+    def test_list_projects_hides_system_default_project(self):
+        default_project = Project(key="default", name="Default Project")
+        db.session.add(default_project)
+        db.session.commit()
+
+        response = self.client.get("/api/projects")
+
+        self.assertEqual(response.status_code, 200)
+        keys = [item["key"] for item in response.get_json()["data"]]
+        self.assertNotIn("default", keys)
+        self.assertIn("payments", keys)
+        self.assertIn("platform", keys)
+
+        detail = self.client.get(f"/api/projects/{default_project.id}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.get_json()["data"]["key"], "default")
+
+    def test_create_project_with_minimal_payload_sets_governance_defaults(self):
+        response = csrf_post(
+            self.client,
+            "/api/projects",
+            self.csrf_token,
+            json={
+                "key": "orders",
+                "name": "Orders",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        body = response.get_json()["data"]
+        self.assertEqual(body["status"], "active")
+        self.assertEqual(body["github_default_visibility"], "private")
+        self.assertEqual(body["aliyun_region"], "cn-hangzhou")
+        self.assertEqual(body["aliyun_binding_status"], "unbound")
+
+        detail = self.client.get(f"/api/projects/{body['id']}").get_json()["data"]
+        self.assertEqual(detail["status"], "active")
+        self.assertEqual(detail["github_default_visibility"], "private")
+        self.assertEqual(detail["aliyun_region"], "cn-hangzhou")
+        self.assertEqual(detail["aliyun_binding_status"], "unbound")
+
     def test_create_project_with_governance_metadata(self):
         response = csrf_post(
             self.client,

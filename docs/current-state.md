@@ -20,6 +20,13 @@
   不再嵌入 Project 详情页。
 - Project Center 提供统一的浅色紧凑弹窗表单样式基座，Kubernetes 集群和 Registry
   新增/编辑弹窗已接入统一 Dialog/Form 样式。
+- Project 的 Registries 页面支持 ACR、Harbor、Docker Hub、ECR、GCR、GHCR 和
+  Generic OCI 配置；用户名和 Token 为必填，Token 加密保存且不通过 API 回显。新增/编辑
+  表单可使用当前内容预检，资源卡片可对已保存配置复测，并记录未测试、已连接或失败状态、
+  最近测试时间和脱敏消息。
+- Registry 连通性测试访问 HTTPS OCI `/v2/`，支持 Basic 和 Bearer Challenge；显式跳过
+  TLS 校验时持续显示风险。连接前拒绝 HTTP、loopback、link-local、云元数据等危险目标，
+  并把实际连接固定到已校验地址，避免 DNS 重绑定绕过。测试不执行镜像推拉。
 - Project 的 Kubernetes 页面提供“初始化新集群”和“添加已有集群”两个入口；Aliyun
   初始化仅展示为即将支持，已有集群支持粘贴完整 kubeconfig、选择 context、设置内置或
   自定义单值环境标签，并在保存前或保存后测试 Kubernetes Version API 连通性。
@@ -48,11 +55,11 @@
 ## Harness 基线验证结果
 
 - `./scripts/verify.sh` 于 2026-07-13 执行成功。
-- 后端 98 个测试全部通过。
+- 后端 127 个测试全部通过。
 - 前端类型检查和生产构建通过。
-- 后端测试产生 43 条警告：18 条 Flask-SQLAlchemy `get_engine()` 弃用警告和
-  25 条 SQLAlchemy `Query.get()` 旧 API 警告。
-- 前端构建转换 1803 个模块并成功产出生产包；Rollup 报告 2 条依赖注释位置提示，
+- 后端测试产生 68 条警告：24 条 Flask-SQLAlchemy `get_engine()` 弃用警告和
+  44 条 SQLAlchemy `Query.get()` 旧 API 警告。
+- 前端构建转换 1802 个模块并成功产出生产包；Rollup 报告 2 条依赖注释位置提示，
   并报告一个超过 500 kB 的 JavaScript 分包。这些是构建警告，不是构建失败。
 - 独立的临时 SQLite 自动迁移测试完成 `f1a2b3c4d5e6` stamp、升级到
   `a7c8d9e0f1a2` 并降级回 `f1a2b3c4d5e6`；未对用户数据库执行降级。
@@ -61,6 +68,9 @@
 - 独立的临时 SQLite 自动迁移测试完成 `c3d4e5f6a7b8` stamp、升级到
   `d4e5f6a7b8c9` 并降级回 `c3d4e5f6a7b8`，并验证既有集群记录保留；未对用户数据库
   执行降级。
+- 独立的临时 SQLite 自动迁移测试完成 `d4e5f6a7b8c9` stamp、升级到
+  `e5f6a7b8c9d0` 并降级回 `d4e5f6a7b8c9`，并验证既有 Registry 记录保留且连接字段
+  默认值正确；未对用户数据库执行降级。
 - 人工浏览器验收于 2026-07-08 使用本地 MySQL 开发库完成：未登录业务路由跳转登录
   并保留原目标，登录后回到项目中心，刷新后恢复会话，退出登录回到登录页，退出后
   再访问业务路由仍被保护。

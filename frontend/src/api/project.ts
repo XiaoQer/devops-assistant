@@ -1,5 +1,13 @@
 import { client } from './client'
-import type { Application, ContainerRegistry, KubernetesCluster, Project, ProjectMember } from '../types'
+import type {
+  Application,
+  ClusterConnectionResult,
+  ClusterPayload,
+  ContainerRegistry,
+  KubernetesCluster,
+  Project,
+  ProjectMember,
+} from '../types'
 
 export interface ProjectPayload {
   key?: string
@@ -38,14 +46,24 @@ export const projectApi = {
     client.delete(`/projects/${projectId}/members/${memberId}`),
   clusters: (projectId: number) =>
     client.get<never, KubernetesCluster[]>(`/projects/${projectId}/clusters`),
-  addCluster: (projectId: number, input: Partial<KubernetesCluster>) =>
+  addCluster: (projectId: number, input: ClusterPayload) =>
     client.post<never, KubernetesCluster>(`/projects/${projectId}/clusters`, input),
-  updateCluster: (projectId: number, clusterId: number, input: Partial<KubernetesCluster>) =>
+  updateCluster: (projectId: number, clusterId: number, input: Partial<ClusterPayload>) =>
     client.patch<never, KubernetesCluster>(`/projects/${projectId}/clusters/${clusterId}`, input),
   removeCluster: (projectId: number, clusterId: number) =>
     client.delete(`/projects/${projectId}/clusters/${clusterId}`),
   setDefaultCluster: (projectId: number, clusterId: number) =>
     client.post<never, KubernetesCluster>(`/projects/${projectId}/clusters/${clusterId}/default`),
+  testClusterConnection: (
+    projectId: number,
+    input: Pick<ClusterPayload, 'kubeconfig' | 'kube_context'>,
+  ) => client.post<never, ClusterConnectionResult>(
+    `/projects/${projectId}/clusters/test-connection`, input,
+  ),
+  testSavedClusterConnection: (projectId: number, clusterId: number) =>
+    client.post<never, ClusterConnectionResult>(
+      `/projects/${projectId}/clusters/${clusterId}/test-connection`,
+    ),
   applications: (projectId: number) =>
     client.get<never, Application[]>('/applications', { params: { projectId } }),
   registries: (projectId: number) =>

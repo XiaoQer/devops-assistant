@@ -152,12 +152,37 @@ export interface KubernetesCluster {
   name: string
   description?: string
   kube_context: string
+  environment_label?: string
+  has_kubeconfig: boolean
   namespace_prefix?: string
   api_server?: string
+  connection_status: ClusterConnectionStatus
+  last_checked_at?: string
+  kubernetes_version?: string
   is_default: boolean
   is_active: boolean
   created_at: string
   updated_at: string
+}
+
+export type ClusterConnectionStatus = 'untested' | 'connected' | 'failed'
+
+export interface ClusterConnectionResult {
+  connected: boolean
+  message: string
+  api_server?: string
+  kubernetes_version?: string
+}
+
+export interface ClusterPayload {
+  name: string
+  environment_label: string
+  kube_context: string
+  kubeconfig?: string
+  namespace_prefix?: string
+  description?: string
+  is_default?: boolean
+  is_active?: boolean
 }
 
 export interface ApplicationConfig {

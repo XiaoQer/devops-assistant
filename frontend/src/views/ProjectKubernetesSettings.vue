@@ -1,6 +1,7 @@
 <template>
   <div class="page-content page-stack">
     <PageHeader
+      class="cluster-page-header"
       eyebrow="Project resources"
       :title="project ? `${project.name} · Kubernetes` : 'Kubernetes'"
       description="维护当前 Project 可用的 Kubernetes 集群、环境标签和连接状态。"
@@ -15,6 +16,7 @@
           <h3>Kubernetes clusters</h3>
           <p>集群凭据加密保存；Application Environment 后续从这里选择部署目标。</p>
         </div>
+        <span class="cluster-count">{{ clusters.length }} clusters</span>
       </div>
       <el-skeleton :loading="loading" animated :rows="6">
         <div v-if="clusters.length" class="cluster-grid">
@@ -25,37 +27,64 @@
                   <h4>{{ cluster.name }}</h4>
                   <span class="environment-pill">{{ cluster.environment_label || '未标注环境' }}</span>
                 </div>
-                <p>{{ cluster.kube_context }}</p>
+                <p>Project deployment target</p>
               </div>
-              <span v-if="cluster.is_default" class="soft-pill">Default</span>
+              <span v-if="cluster.is_default" class="default-pill">Default</span>
             </div>
+
+            <div class="connection-panel">
+              <div>
+                <span class="connection-label">API Server</span>
+                <strong>{{ cluster.api_server || '尚未发现 API Server' }}</strong>
+              </div>
+              <div class="context-value">
+                <span class="connection-label">Context</span>
+                <strong>{{ cluster.kube_context }}</strong>
+              </div>
+            </div>
+
             <div class="cluster-meta">
-              <span class="soft-pill" :class="`connection-${cluster.connection_status}`">
+              <span class="status-pill" :class="`connection-${cluster.connection_status}`">
+                <i class="status-dot" />
                 {{ connectionStatusLabel(cluster.connection_status) }}
               </span>
-              <span class="soft-pill">{{ cluster.namespace_prefix || 'no namespace prefix' }}</span>
-              <span class="soft-pill">{{ cluster.is_active ? 'Active' : 'Disabled' }}</span>
-              <span v-if="cluster.kubernetes_version" class="soft-pill">
+              <span class="status-pill">{{ cluster.is_active ? 'Active' : 'Disabled' }}</span>
+              <span v-if="cluster.kubernetes_version" class="status-pill">
                 {{ cluster.kubernetes_version }}
               </span>
-            </div>
-            <div class="connection-details">
-              <span>{{ cluster.api_server || '尚未通过连接测试发现 API Server' }}</span>
-              <span v-if="cluster.last_checked_at">
-                最近测试：{{ formatDateTime(cluster.last_checked_at) }}
+              <span v-if="cluster.namespace_prefix" class="status-pill">
+                ns · {{ cluster.namespace_prefix }}
               </span>
             </div>
             <p v-if="cluster.description" class="cluster-description">{{ cluster.description }}</p>
-            <div class="cluster-actions">
-              <el-button
-                :loading="testingClusterId === cluster.id"
-                @click="testSavedConnection(cluster.id)"
-              >
-                测试连接
-              </el-button>
-              <el-button v-if="!cluster.is_default" @click="setDefaultCluster(cluster.id)">设为默认</el-button>
-              <el-button @click="openEditDialog(cluster)">编辑</el-button>
-              <el-button @click="removeCluster(cluster)">删除</el-button>
+
+            <div class="cluster-footer">
+              <div class="last-check">
+                <span>最近测试</span>
+                <strong>{{ cluster.last_checked_at ? formatDateTime(cluster.last_checked_at) : '尚未测试' }}</strong>
+              </div>
+              <div class="cluster-actions">
+                <el-button
+                  type="primary"
+                  plain
+                  :loading="testingClusterId === cluster.id"
+                  @click="testSavedConnection(cluster.id)"
+                >
+                  测试连接
+                </el-button>
+                <el-button @click="openEditDialog(cluster)">编辑</el-button>
+                <el-dropdown trigger="click">
+                  <el-button class="more-button" aria-label="更多集群操作">•••</el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item v-if="!cluster.is_default" @click="setDefaultCluster(cluster.id)">
+                        设为默认
+                      </el-dropdown-item>
+                      <el-dropdown-item divided @click="removeCluster(cluster)">删除集群</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
             </div>
           </article>
         </div>
@@ -97,11 +126,11 @@
         </button>
       </div>
 
-      <el-form v-else label-position="top">
-        <section class="form-section">
-          <div class="section-title">
-            <h4>集群信息</h4>
-            <p>kubeconfig 仅用于加密保存和创建该集群的独立 Kubernetes 客户端。</p>
+      <el-form v-else label-position="top" class="cluster-form">
+        <section class="form-block">
+          <div class="form-block-header">
+            <span>01</span>
+            <div><h4>基本信息</h4><p>标识集群及其所属环境。</p></div>
           </div>
           <div class="form-grid">
             <el-form-item label="名称" required>
@@ -118,7 +147,19 @@
                 <el-option v-for="label in environmentLabels" :key="label" :label="label" :value="label" />
               </el-select>
             </el-form-item>
-            <el-form-item class="wide" :label="editing ? '替换 kubeconfig（留空保留）' : '完整 kubeconfig'" required>
+            <el-form-item class="wide" label="描述">
+              <el-input v-model="form.description" type="textarea" :rows="2" placeholder="补充用途、负责人或访问边界" />
+            </el-form-item>
+          </div>
+        </section>
+
+        <section class="form-block">
+          <div class="form-block-header">
+            <span>02</span>
+            <div><h4>连接配置</h4><p>凭据只会加密保存，不会在编辑时回显。</p></div>
+          </div>
+          <div class="form-grid">
+            <el-form-item class="wide kubeconfig-field" :label="editing ? '替换 kubeconfig（留空保留）' : '完整 kubeconfig'" required>
               <el-input
                 v-model="form.kubeconfig"
                 type="textarea"
@@ -136,9 +177,28 @@
             <el-form-item label="Namespace Prefix">
               <el-input v-model="form.namespace_prefix" placeholder="例如 payments" />
             </el-form-item>
-            <el-form-item class="wide" label="描述">
-              <el-input v-model="form.description" type="textarea" :rows="3" />
-            </el-form-item>
+          </div>
+          <el-alert
+            v-if="transientTestResult"
+            class="connection-alert"
+            :type="transientTestResult.connected ? 'success' : 'warning'"
+            :title="transientTestResult.message"
+            :closable="false"
+            show-icon
+          >
+            <template #default>
+              <span v-if="transientTestResult.api_server">{{ transientTestResult.api_server }}</span>
+              <span v-if="transientTestResult.kubernetes_version"> · {{ transientTestResult.kubernetes_version }}</span>
+            </template>
+          </el-alert>
+        </section>
+
+        <section class="form-block governance-block">
+          <div class="form-block-header">
+            <span>03</span>
+            <div><h4>治理设置</h4><p>控制默认选择与可用状态。</p></div>
+          </div>
+          <div class="governance-options">
             <el-form-item label="默认集群">
               <el-switch v-model="form.is_default" />
             </el-form-item>
@@ -147,21 +207,6 @@
             </el-form-item>
           </div>
         </section>
-
-        <el-alert
-          v-if="transientTestResult"
-          :type="transientTestResult.connected ? 'success' : 'warning'"
-          :title="transientTestResult.message"
-          :closable="false"
-          show-icon
-        >
-          <template #default>
-            <span v-if="transientTestResult.api_server">{{ transientTestResult.api_server }}</span>
-            <span v-if="transientTestResult.kubernetes_version">
-              · {{ transientTestResult.kubernetes_version }}
-            </span>
-          </template>
-        </el-alert>
       </el-form>
 
       <template #footer>
@@ -406,21 +451,59 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.cluster-page-header {
+  margin-bottom: 4px;
+}
+
+.cluster-page-header :deep(.eyebrow) {
+  min-height: 24px;
+  margin-bottom: 9px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.cluster-page-header :deep(h1) {
+  font-size: 32px;
+}
+
+.cluster-page-header :deep(p) {
+  margin-top: 8px;
+}
+
 .panel-card {
   box-shadow: none;
+  overflow: hidden;
+}
+
+.cluster-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .cluster-grid {
   display: grid;
-  gap: 12px;
-  padding: 16px 24px 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px 24px 24px;
 }
 
 .cluster-card {
-  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 20px;
   border: 1px solid var(--border-soft);
-  border-radius: 14px;
-  background: var(--surface-soft);
+  border-radius: 16px;
+  background: var(--theme-panel);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.cluster-card:hover {
+  border-color: #c9d6e7;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.07);
+  transform: translateY(-1px);
 }
 
 .cluster-head,
@@ -438,51 +521,184 @@ onMounted(async () => {
 
 .cluster-head h4 {
   margin: 0;
-  font-size: 18px;
+  font-size: 17px;
+  letter-spacing: -0.02em;
 }
 
 .cluster-head p,
-.cluster-description,
-.connection-details {
-  margin: 8px 0 0;
+.cluster-description {
+  margin: 6px 0 0;
   color: var(--muted);
-  line-height: 1.7;
+  font-size: 12px;
+  line-height: 1.65;
 }
 
 .environment-pill,
 .coming-soon {
-  padding: 3px 8px;
+  padding: 4px 9px;
   border-radius: 999px;
   color: #1d4ed8;
   background: #dbeafe;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
+.default-pill {
+  padding: 5px 9px;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  color: #536174;
+  background: #f8fafc;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.connection-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(120px, 0.8fr);
+  gap: 16px;
+  margin-top: 18px;
+  padding: 13px 14px;
+  border: 1px solid #e7ebf1;
+  border-radius: 11px;
+  background: #f7f9fc;
+}
+
+.connection-panel > div {
+  min-width: 0;
+}
+
+.connection-label {
+  display: block;
+  margin-bottom: 5px;
+  color: #8a95a5;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.connection-panel strong {
+  display: block;
+  overflow: hidden;
+  color: #344054;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-value {
+  padding-left: 16px;
+  border-left: 1px solid #e0e6ee;
+}
+
 .cluster-meta,
-.cluster-actions,
-.connection-details {
+.cluster-actions {
   display: flex;
-  gap: 10px;
+  gap: 7px;
   flex-wrap: wrap;
 }
 
 .cluster-meta {
-  margin: 14px 0;
+  margin: 14px 0 0;
 }
 
-.cluster-actions {
-  margin-top: 14px;
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid #e2e7ee;
+  border-radius: 999px;
+  color: #556173;
+  background: #f8fafc;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .connection-connected {
   color: #047857;
+  border-color: #a7efd3;
   background: #d1fae5;
 }
 
 .connection-failed {
   color: #b45309;
+  border-color: #f8d795;
   background: #fef3c7;
+}
+
+.connection-untested {
+  color: #667085;
+  background: #f2f4f7;
+}
+
+.cluster-description {
+  margin-top: 13px;
+}
+
+.cluster-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: auto;
+  padding-top: 17px;
+  border-top: 1px solid #edf0f4;
+}
+
+.cluster-meta + .cluster-footer,
+.cluster-description + .cluster-footer {
+  margin-top: 17px;
+}
+
+.last-check span,
+.last-check strong {
+  display: block;
+}
+
+.last-check span {
+  color: #98a2b3;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.last-check strong {
+  margin-top: 4px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cluster-actions {
+  justify-content: flex-end;
+}
+
+.cluster-actions :deep(.el-button) {
+  min-height: 32px;
+  padding: 6px 11px;
+  border-radius: 9px;
+  font-size: 11px;
+}
+
+.more-button {
+  width: 34px;
+  padding-inline: 0 !important;
+  letter-spacing: 1px;
 }
 
 .onboarding-choice {
@@ -496,31 +712,33 @@ onMounted(async () => {
   align-items: center;
   width: 100%;
   gap: 16px;
-  padding: 20px;
+  padding: 22px;
   border: 1px solid var(--border-soft);
   border-radius: 14px;
   color: var(--text);
-  background: var(--surface-soft);
+  background: #f8fafc;
   text-align: left;
   cursor: pointer;
   transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
 .choice-card:not(:disabled):hover {
-  border-color: #93c5fd;
-  transform: translateY(-1px);
+  border-color: #77a5f8;
+  background: #f4f8ff;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.1);
+  transform: translateY(-2px);
 }
 
 .choice-card.unavailable {
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 0.62;
 }
 
 .choice-icon {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   flex: 0 0 auto;
   border-radius: 12px;
   color: #1d4ed8;
@@ -548,11 +766,143 @@ onMounted(async () => {
   font-size: 22px;
 }
 
+.cluster-form {
+  display: grid;
+  gap: 14px;
+}
+
+.form-block {
+  overflow: hidden;
+  border: 1px solid #e4e9f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.form-block-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #edf0f4;
+  background: #f8fafc;
+}
+
+.form-block-header > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  color: #1d4ed8;
+  background: #e4edff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.form-block-header h4,
+.form-block-header p {
+  margin: 0;
+}
+
+.form-block-header h4 {
+  color: #1d2939;
+  font-size: 13px;
+}
+
+.form-block-header p {
+  margin-top: 3px;
+  color: #8a95a5;
+  font-size: 10px;
+}
+
+.form-block .form-grid {
+  padding: 16px;
+}
+
+.form-block :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.kubeconfig-field :deep(.el-textarea__inner) {
+  padding: 13px 14px;
+  color: #344054;
+  background: #f7f9fc;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.connection-alert {
+  margin: 0 16px 16px;
+}
+
+.governance-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.governance-options :deep(.el-form-item) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  margin: 0;
+  padding: 0 14px;
+  border: 1px solid #e7ebf1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.governance-options :deep(.el-form-item__label) {
+  margin: 0;
+}
+
+@media (max-width: 1100px) {
+  .cluster-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 720px) {
+  .cluster-page-header :deep(h1) {
+    font-size: 28px;
+  }
+
+  .cluster-grid {
+    padding: 14px;
+  }
+
   .cluster-head,
   .choice-title-line {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .connection-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .context-value {
+    padding: 12px 0 0;
+    border-top: 1px solid #e0e6ee;
+    border-left: 0;
+  }
+
+  .cluster-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cluster-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .governance-options {
+    grid-template-columns: 1fr;
   }
 }
 </style>

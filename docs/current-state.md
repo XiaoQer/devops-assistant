@@ -23,6 +23,9 @@
 - Project 的 Kubernetes 页面提供“初始化新集群”和“添加已有集群”两个入口；Aliyun
   初始化仅展示为即将支持，已有集群支持粘贴完整 kubeconfig、选择 context、设置内置或
   自定义单值环境标签，并在保存前或保存后测试 Kubernetes Version API 连通性。
+- Project 的 Kubernetes 页面在宽屏使用双列资源卡片并在窄屏自动切换单列；API Server、
+  Context、连接状态和最近测试时间按层级呈现，测试与编辑保持直接可见，默认设置和删除收纳
+  到更多操作菜单。添加/编辑弹窗按基本信息、连接配置和治理设置分区展示。
 - 集群 kubeconfig 使用由服务端 `SECRET_KEY` 派生的 Fernet 密钥加密保存，API 仅返回
   `has_kubeconfig`；连通性测试记录脱敏状态、时间、Kubernetes 版本和成功发现的 API Server，
   并拒绝 `exec` 认证、本地凭据文件引用、非 HTTPS Server 和超过 1 MiB 的配置。

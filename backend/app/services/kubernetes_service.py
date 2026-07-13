@@ -18,6 +18,22 @@ class KubernetesService:
         self.apps_api = client.AppsV1Api(self.api_client)
         self.networking_api = client.NetworkingV1Api(self.api_client)
         self.custom_api = client.CustomObjectsApi(self.api_client)
+        self.version_api = client.VersionApi(self.api_client)
+
+    @classmethod
+    def from_kubeconfig(cls, kubeconfig, context):
+        instance = cls.__new__(cls)
+        instance.mode = "cluster-kubeconfig"
+        configuration = client.Configuration()
+        config.load_kube_config_from_dict(
+            kubeconfig,
+            context=context,
+            client_configuration=configuration,
+            persist_config=False,
+        )
+        instance.api_client = client.ApiClient(configuration)
+        instance.version_api = client.VersionApi(instance.api_client)
+        return instance
 
     @property
     def server(self):
@@ -34,6 +50,10 @@ class KubernetesService:
             "server": self.server,
             "tektonInstalled": True,
         }
+
+    def version(self):
+        result = self.version_api.get_code(_request_timeout=5)
+        return {"server": self.server, "version": result.git_version}
 
     def ensure_namespace(self, namespace):
         try:

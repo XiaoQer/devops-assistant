@@ -259,9 +259,7 @@ class KubernetesClusterService:
             "namespace_prefix": str(payload.get(
                 "namespace_prefix", current.namespace_prefix if current else ""
             ) or "").strip() or None,
-            "api_server": str(payload.get(
-                "api_server", current.api_server if current else ""
-            ) or "").strip() or None,
+            "api_server": current.api_server if current else None,
             "is_default": bool(payload.get("is_default", current.is_default if current else False)),
             "is_active": bool(payload.get("is_active", current.is_active if current else True)),
         }

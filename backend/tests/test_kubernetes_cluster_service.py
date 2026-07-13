@@ -73,10 +73,14 @@ class KubernetesClusterServiceTest(unittest.TestCase):
         }
 
     def test_create_encrypts_kubeconfig_and_serializes_only_safe_metadata(self):
-        cluster = self.service.create(self.project, self.payload())
+        cluster = self.service.create(
+            self.project,
+            self.payload(api_server="https://spoofed.example.test"),
+        )
 
         self.assertNotEqual(cluster.encrypted_kubeconfig, VALID_KUBECONFIG)
         self.assertEqual(self.service.credentials(cluster), (VALID_KUBECONFIG, "dev"))
+        self.assertIsNone(cluster.api_server)
         self.assertTrue(cluster.to_dict()["has_kubeconfig"])
         self.assertNotIn("encrypted_kubeconfig", cluster.to_dict())
         self.assertNotIn("kubeconfig", cluster.to_dict())

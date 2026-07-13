@@ -99,6 +99,15 @@ export interface Project {
   name: string
   description?: string
   status?: string
+  business_owner?: string
+  billing_owner?: string
+  github_group?: string
+  github_default_visibility?: 'private' | 'internal' | 'public' | string
+  aliyun_account_id?: string
+  aliyun_resource_group_id?: string
+  aliyun_region?: string
+  aliyun_vpc_id?: string
+  aliyun_binding_status?: 'unbound' | 'pending' | 'linked' | 'failed' | string
   my_role?: string
   last_release?: string
   application_count?: number

@@ -64,6 +64,119 @@ class ProjectRoutesTest(unittest.TestCase):
         self.assertEqual(len(members), 1)
         self.assertEqual(members[0]["role"], "owner")
 
+    def test_create_project_with_governance_metadata(self):
+        response = csrf_post(
+            self.client,
+            "/api/projects",
+            self.csrf_token,
+            json={
+                "key": "orders",
+                "name": "Orders",
+                "description": "Order domain delivery boundary",
+                "status": "active",
+                "business_owner": "Order Platform Team",
+                "billing_owner": "FinOps",
+                "github_group": "acme/orders",
+                "github_default_visibility": "private",
+                "aliyun_account_id": "1234567890123456",
+                "aliyun_resource_group_id": "rg-acfm2pz25js****",
+                "aliyun_region": "cn-hangzhou",
+                "aliyun_vpc_id": "vpc-bp1example",
+                "aliyun_binding_status": "linked",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        body = response.get_json()["data"]
+        self.assertEqual(body["status"], "active")
+        self.assertEqual(body["business_owner"], "Order Platform Team")
+        self.assertEqual(body["billing_owner"], "FinOps")
+        self.assertEqual(body["github_group"], "acme/orders")
+        self.assertEqual(body["github_default_visibility"], "private")
+        self.assertEqual(body["aliyun_account_id"], "1234567890123456")
+        self.assertEqual(body["aliyun_resource_group_id"], "rg-acfm2pz25js****")
+        self.assertEqual(body["aliyun_region"], "cn-hangzhou")
+        self.assertEqual(body["aliyun_vpc_id"], "vpc-bp1example")
+        self.assertEqual(body["aliyun_binding_status"], "linked")
+
+        detail = self.client.get(f"/api/projects/{body['id']}").get_json()["data"]
+        self.assertEqual(detail["github_group"], "acme/orders")
+        self.assertEqual(detail["aliyun_region"], "cn-hangzhou")
+
+    def test_update_project_governance_metadata(self):
+        response = self.client.patch(
+            f"/api/projects/{self.project_id}",
+            headers={"X-CSRF-Token": self.csrf_token},
+            json={
+                "name": "Payments Core",
+                "status": "archived",
+                "business_owner": "Payments Platform",
+                "billing_owner": "Finance Ops",
+                "github_group": "acme/payments-core",
+                "github_default_visibility": "internal",
+                "aliyun_account_id": "9988776655443322",
+                "aliyun_resource_group_id": "rg-payments-core",
+                "aliyun_region": "cn-shanghai",
+                "aliyun_vpc_id": "vpc-payments-core",
+                "aliyun_binding_status": "pending",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()["data"]
+        self.assertEqual(body["name"], "Payments Core")
+        self.assertEqual(body["status"], "archived")
+        self.assertEqual(body["github_default_visibility"], "internal")
+        self.assertEqual(body["aliyun_binding_status"], "pending")
+
+        list_response = self.client.get("/api/projects")
+        items = list_response.get_json()["data"]
+        updated = next(item for item in items if item["id"] == self.project_id)
+        self.assertEqual(updated["github_group"], "acme/payments-core")
+        self.assertEqual(updated["aliyun_resource_group_id"], "rg-payments-core")
+
+    def test_project_rejects_invalid_metadata(self):
+        response = csrf_post(
+            self.client,
+            "/api/projects",
+            self.csrf_token,
+            json={
+                "key": "orders",
+                "name": "Orders",
+                "status": "provisioning",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"]["code"], "PROJECT_INVALID_STATUS")
+
+        update_response = self.client.patch(
+            f"/api/projects/{self.project_id}",
+            headers={"X-CSRF-Token": self.csrf_token},
+            json={"aliyun_binding_status": "ready"},
+        )
+
+        self.assertEqual(update_response.status_code, 400)
+        self.assertEqual(
+            update_response.get_json()["error"]["code"],
+            "PROJECT_INVALID_ALIYUN_BINDING_STATUS",
+        )
+
+    def test_project_rejects_sensitive_metadata_fields(self):
+        response = csrf_post(
+            self.client,
+            "/api/projects",
+            self.csrf_token,
+            json={
+                "key": "orders",
+                "name": "Orders",
+                "aliyun_access_key_secret": "never-store-me",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"]["code"], "PROJECT_SENSITIVE_FIELD")
+
     def test_member_and_cluster_routes(self):
         member_response = csrf_post(
             self.client,

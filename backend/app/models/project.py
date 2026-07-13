@@ -14,6 +14,18 @@ class Project(db.Model):
     key = db.Column(db.String(64), nullable=False, unique=True, index=True)
     name = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text)
+    status = db.Column(db.String(30), default="active", nullable=False, index=True)
+    business_owner = db.Column(db.String(120))
+    billing_owner = db.Column(db.String(120))
+    github_group = db.Column(db.String(255))
+    github_default_visibility = db.Column(db.String(30), default="private", nullable=False)
+    aliyun_account_id = db.Column(db.String(64))
+    aliyun_resource_group_id = db.Column(db.String(120))
+    aliyun_region = db.Column(db.String(64))
+    aliyun_vpc_id = db.Column(db.String(120))
+    aliyun_binding_status = db.Column(
+        db.String(30), default="unbound", nullable=False, index=True
+    )
     created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
@@ -44,6 +56,16 @@ class Project(db.Model):
             "key": self.key,
             "name": self.name,
             "description": self.description,
+            "status": self.status,
+            "business_owner": self.business_owner,
+            "billing_owner": self.billing_owner,
+            "github_group": self.github_group,
+            "github_default_visibility": self.github_default_visibility,
+            "aliyun_account_id": self.aliyun_account_id,
+            "aliyun_resource_group_id": self.aliyun_resource_group_id,
+            "aliyun_region": self.aliyun_region,
+            "aliyun_vpc_id": self.aliyun_vpc_id,
+            "aliyun_binding_status": self.aliyun_binding_status,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -55,4 +77,3 @@ class Project(db.Model):
                 "registries_count": len(self.registries),
             })
         return data
-

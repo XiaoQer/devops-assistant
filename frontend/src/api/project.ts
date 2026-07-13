@@ -1,18 +1,31 @@
 import { client } from './client'
 import type { Application, ContainerRegistry, KubernetesCluster, Project, ProjectMember } from '../types'
 
+export interface ProjectPayload {
+  key?: string
+  name?: string
+  description?: string
+  status?: string
+  business_owner?: string
+  billing_owner?: string
+  github_group?: string
+  github_default_visibility?: string
+  aliyun_account_id?: string
+  aliyun_resource_group_id?: string
+  aliyun_region?: string
+  aliyun_vpc_id?: string
+  aliyun_binding_status?: string
+  owner_name?: string
+  owner_email?: string
+  owner_title?: string
+}
+
 export const projectApi = {
   list: () => client.get<never, Project[]>('/projects'),
   get: (id: number) => client.get<never, Project>(`/projects/${id}`),
-  create: (input: {
-    key: string
-    name: string
-    description?: string
-    owner_name?: string
-    owner_email?: string
-    owner_title?: string
-  }) => client.post<never, Project>('/projects', input),
-  update: (id: number, input: Record<string, unknown>) =>
+  create: (input: ProjectPayload & { key: string; name: string }) =>
+    client.post<never, Project>('/projects', input),
+  update: (id: number, input: ProjectPayload) =>
     client.patch<never, Project>(`/projects/${id}`, input),
   remove: (id: number) => client.delete(`/projects/${id}`),
   members: (projectId: number) =>

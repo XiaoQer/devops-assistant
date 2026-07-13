@@ -1,6 +1,7 @@
 # macOS / IDE
 .DS_Store
 .idea/
+.superpowers/
 
 # Python
 __pycache__/

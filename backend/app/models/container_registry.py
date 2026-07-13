@@ -17,6 +17,12 @@ class ContainerRegistry(db.Model):
     pull_secret_name = db.Column(
         db.String(253), default="aegis-registry-credentials", nullable=False
     )
+    skip_tls_verify = db.Column(db.Boolean, default=False, nullable=False)
+    connection_status = db.Column(
+        db.String(20), default="untested", nullable=False
+    )
+    last_checked_at = db.Column(db.DateTime(timezone=True))
+    last_connection_message = db.Column(db.String(300))
     is_default = db.Column(db.Boolean, default=False, nullable=False, index=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
@@ -47,6 +53,12 @@ class ContainerRegistry(db.Model):
             "has_credentials": bool(self.encrypted_password),
             "email": self.email or "",
             "pull_secret_name": self.pull_secret_name,
+            "skip_tls_verify": self.skip_tls_verify,
+            "connection_status": self.connection_status,
+            "last_checked_at": (
+                self.last_checked_at.isoformat() if self.last_checked_at else None
+            ),
+            "last_connection_message": self.last_connection_message,
             "is_default": self.is_default,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat(),

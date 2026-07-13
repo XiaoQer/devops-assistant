@@ -43,7 +43,12 @@ class RegistryServiceTest(unittest.TestCase):
         self.assertEqual(item.image_prefix, "company.azurecr.io/platform")
         self.assertNotEqual(item.encrypted_password, "client-secret")
         self.assertEqual(service.credentials(item)["password"], "client-secret")
-        self.assertNotIn("encrypted_password", item.to_dict())
+        serialized = item.to_dict()
+        self.assertFalse(serialized["skip_tls_verify"])
+        self.assertEqual(serialized["connection_status"], "untested")
+        self.assertIsNone(serialized["last_checked_at"])
+        self.assertIsNone(serialized["last_connection_message"])
+        self.assertNotIn("encrypted_password", serialized)
 
     def test_only_one_registry_can_be_default(self):
         service = RegistryService()

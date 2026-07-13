@@ -269,7 +269,7 @@ export interface ContainerRegistry {
   project_id?: number | null
   project_name?: string | null
   name: string
-  provider: 'acr' | 'harbor' | 'dockerhub' | 'ecr' | 'gcr' | 'generic'
+  provider: 'acr' | 'harbor' | 'dockerhub' | 'ecr' | 'gcr' | 'generic' | 'ghcr'
   server: string
   namespace: string
   image_prefix: string
@@ -277,10 +277,42 @@ export interface ContainerRegistry {
   email: string
   pull_secret_name: string
   has_credentials: boolean
+  skip_tls_verify: boolean
+  connection_status: RegistryConnectionStatus
+  last_checked_at?: string | null
+  last_connection_message?: string | null
   is_default: boolean
   is_active: boolean
   created_at: string
   updated_at: string
+}
+
+export type RegistryConnectionStatus = 'untested' | 'connected' | 'failed'
+
+export interface RegistryPayload {
+  name: string
+  provider: ContainerRegistry['provider']
+  server: string
+  namespace?: string
+  username: string
+  password?: string
+  email?: string
+  pull_secret_name?: string
+  skip_tls_verify: boolean
+  is_active: boolean
+}
+
+export interface RegistryConnectionResult {
+  connected: boolean
+  message: string
+  tls_verified: boolean
+  auth_method?: 'basic' | 'bearer'
+  failure_reason?:
+    | 'authentication_failed'
+    | 'tls_failed'
+    | 'timeout'
+    | 'unreachable'
+    | 'protocol_error'
 }
 
 export interface PipelineRunSummary {

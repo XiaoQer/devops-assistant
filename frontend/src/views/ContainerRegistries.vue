@@ -95,6 +95,10 @@
           <el-form-item :label="editing ? '密码 / Token（留空表示不修改）' : '密码 / Token'"><el-input v-model="form.password" type="password" show-password autocomplete="new-password" /></el-form-item>
           <el-form-item label="Email（可选）"><el-input v-model="form.email" /></el-form-item>
           <el-form-item label="启用"><el-switch v-model="form.is_active" /></el-form-item>
+          <el-form-item class="wide" label="跳过 TLS 证书校验">
+            <el-switch v-model="form.skip_tls_verify" />
+            <small v-if="form.skip_tls_verify">高风险：仅用于受控的自签名 Registry，连接仍强制使用 HTTPS。</small>
+          </el-form-item>
         </div>
       </el-form>
       <template #footer>
@@ -111,9 +115,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '../components/common/PageHeader.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import EmptyState from '../components/common/EmptyState.vue'
-import { registryApi } from '../api/registry'
+import { projectApi } from '../api/project'
 import { useProjectStore } from '../stores/project'
-import type { ContainerRegistry } from '../types'
+import type { ContainerRegistry, RegistryPayload } from '../types'
 
 const projectStore = useProjectStore()
 const items = ref<ContainerRegistry[]>([])
@@ -127,10 +131,11 @@ const providers = [
   { value: 'dockerhub', label: 'Docker Hub' },
   { value: 'ecr', label: 'Amazon ECR' },
   { value: 'gcr', label: 'Google Artifact Registry' },
+  { value: 'ghcr', label: 'GitHub Container Registry' },
   { value: 'generic', label: 'Generic OCI Registry' },
 ]
 
-const defaults = {
+const defaults: RegistryPayload = {
   name: '',
   provider: 'acr',
   server: '',
@@ -139,6 +144,7 @@ const defaults = {
   password: '',
   email: '',
   pull_secret_name: 'aegis-registry-credentials',
+  skip_tls_verify: false,
   is_active: true,
 }
 
@@ -147,9 +153,14 @@ const providerLabel = (value: string) => providers.find(provider => provider.val
 const icon = (value: string) => value === 'acr' ? 'AZ' : value === 'harbor' ? 'H' : value === 'dockerhub' ? 'D' : 'OCI'
 
 async function load() {
+  const projectId = projectStore.activeProjectId
+  if (!projectId) {
+    items.value = []
+    return
+  }
   loading.value = true
   try {
-    items.value = await registryApi.list(projectStore.activeProjectId || undefined)
+    items.value = await projectApi.registries(projectId)
   } finally {
     loading.value = false
   }
@@ -168,11 +179,14 @@ function edit(item: ContainerRegistry) {
 }
 
 async function save() {
-  if (!form.name.trim() || !form.server.trim()) return ElMessage.warning('请填写名称和 Registry Server')
+  const projectId = projectStore.activeProjectId
+  if (!projectId) return ElMessage.warning('请先选择 Project')
+  if (!form.name.trim() || !form.server.trim() || !form.username.trim()) return ElMessage.warning('请填写名称、Registry Server 和用户名')
+  if (!editing.value && !form.password?.trim()) return ElMessage.warning('请填写 Registry Token')
   saving.value = true
   try {
-    if (editing.value) await registryApi.update(editing.value.id, form)
-    else await registryApi.create({ ...form, project_id: projectStore.activeProjectId || undefined })
+    if (editing.value) await projectApi.updateRegistry(projectId, editing.value.id, form)
+    else await projectApi.addRegistry(projectId, form)
     ElMessage.success('镜像仓库配置已保存')
     dialog.value = false
     await load()
@@ -182,14 +196,18 @@ async function save() {
 }
 
 async function makeDefault(item: ContainerRegistry) {
-  await registryApi.setDefault(item.id)
+  const projectId = projectStore.activeProjectId
+  if (!projectId) return
+  await projectApi.setDefaultRegistry(projectId, item.id)
   ElMessage.success('默认镜像仓库已更新')
   load()
 }
 
 async function remove(item: ContainerRegistry) {
+  const projectId = projectStore.activeProjectId
+  if (!projectId) return
   await ElMessageBox.confirm(`确认删除镜像仓库 ${item.name}？`, '危险操作', { type: 'warning' })
-  await registryApi.remove(item.id)
+  await projectApi.removeRegistry(projectId, item.id)
   ElMessage.success('镜像仓库已删除')
   load()
 }

@@ -7,6 +7,8 @@ import type {
   KubernetesCluster,
   Project,
   ProjectMember,
+  RegistryConnectionResult,
+  RegistryPayload,
 } from '../types'
 
 export interface ProjectPayload {
@@ -67,5 +69,36 @@ export const projectApi = {
   applications: (projectId: number) =>
     client.get<never, Application[]>('/applications', { params: { projectId } }),
   registries: (projectId: number) =>
-    client.get<never, ContainerRegistry[]>('/registries', { params: { projectId } }),
+    client.get<never, ContainerRegistry[]>(`/projects/${projectId}/registries`),
+  addRegistry: (projectId: number, input: RegistryPayload) =>
+    client.post<never, ContainerRegistry>(`/projects/${projectId}/registries`, input),
+  updateRegistry: (
+    projectId: number,
+    registryId: number,
+    input: Partial<RegistryPayload>,
+  ) => client.patch<never, ContainerRegistry>(
+    `/projects/${projectId}/registries/${registryId}`,
+    input,
+  ),
+  removeRegistry: (projectId: number, registryId: number) =>
+    client.delete(`/projects/${projectId}/registries/${registryId}`),
+  setDefaultRegistry: (projectId: number, registryId: number) =>
+    client.post<never, ContainerRegistry>(
+      `/projects/${projectId}/registries/${registryId}/default`,
+    ),
+  testRegistryConnection: (
+    projectId: number,
+    input: Pick<RegistryPayload, 'server' | 'username' | 'password' | 'skip_tls_verify'>,
+  ) => client.post<never, RegistryConnectionResult>(
+    `/projects/${projectId}/registries/test-connection`,
+    input,
+  ),
+  testSavedRegistryConnection: (
+    projectId: number,
+    registryId: number,
+    input?: Partial<RegistryPayload>,
+  ) => client.post<never, RegistryConnectionResult>(
+    `/projects/${projectId}/registries/${registryId}/test-connection`,
+    input,
+  ),
 }

@@ -89,11 +89,24 @@ def list_clusters(project_id):
     return success([item.to_dict() for item in cluster_service.list(project)])
 
 
+@bp.post("/<int:project_id>/clusters/test-connection")
+def test_cluster_connection(project_id):
+    get_project(project_id)
+    payload = json_object(request.get_json(silent=True), required=True)
+    require_fields(payload, "kubeconfig", "kube_context")
+    result = cluster_service.test_connection(
+        payload["kubeconfig"], payload["kube_context"]
+    )
+    return success(result, result["message"])
+
+
 @bp.post("/<int:project_id>/clusters")
 def create_cluster(project_id):
     project = get_project(project_id)
     payload = json_object(request.get_json(silent=True), required=True)
-    require_fields(payload, "name", "kube_context")
+    require_fields(
+        payload, "name", "environment_label", "kubeconfig", "kube_context"
+    )
     item = cluster_service.create(project, payload)
     return success(item.to_dict(), "Kubernetes 集群已添加", 201)
 
@@ -120,3 +133,12 @@ def set_default_cluster(project_id, cluster_id):
     project = get_project(project_id)
     item = cluster_service.set_default(cluster_service.get(project, cluster_id))
     return success(item.to_dict(), "默认 Kubernetes 集群已更新")
+
+
+@bp.post("/<int:project_id>/clusters/<int:cluster_id>/test-connection")
+def test_saved_cluster_connection(project_id, cluster_id):
+    project = get_project(project_id)
+    result = cluster_service.test_saved_connection(
+        cluster_service.get(project, cluster_id)
+    )
+    return success(result, result["message"])

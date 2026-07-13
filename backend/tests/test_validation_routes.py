@@ -2,7 +2,7 @@ import unittest
 
 from app import create_app
 from app.extensions import db
-from app.models import Application, User
+from app.models import Application, Project, User
 
 from auth_helpers import create_user, csrf_post, login
 
@@ -44,7 +44,10 @@ class RouteValidationTest(unittest.TestCase):
             port=8080,
             status="Running",
         ))
+        project = Project(key="payments", name="Payments")
+        db.session.add(project)
         db.session.commit()
+        self.project_id = project.id
 
     def tearDown(self):
         db.session.remove()
@@ -119,6 +122,29 @@ class RouteValidationTest(unittest.TestCase):
         body = response.get_json()
         self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
         self.assertEqual(body["error"]["details"]["fields"], ["name", "server"])
+
+    def test_cluster_connection_requires_object_and_write_only_fields(self):
+        non_object = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/clusters/test-connection",
+            self.csrf_token,
+            json=["not-an-object"],
+        )
+        self.assertEqual(non_object.status_code, 400)
+        self.assertEqual(non_object.get_json()["error"]["code"], "INVALID_REQUEST_BODY")
+
+        missing = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/clusters/test-connection",
+            self.csrf_token,
+            json={},
+        )
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.get_json()["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(
+            missing.get_json()["error"]["details"]["fields"],
+            ["kubeconfig", "kube_context"],
+        )
 
     def test_deploy_plan_requires_explicit_environment(self):
         response = csrf_post(

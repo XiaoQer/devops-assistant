@@ -1,10 +1,32 @@
 import unittest
+from unittest.mock import patch
 
 from app import create_app
 from app.extensions import db
-from app.models import Application, ContainerRegistry, Project, User
+from app.models import Application, ContainerRegistry, KubernetesCluster, Project, User
 
 from auth_helpers import create_user, csrf_post, login
+
+
+VALID_KUBECONFIG = """
+apiVersion: v1
+kind: Config
+current-context: dev
+clusters:
+  - name: dev-cluster
+    cluster:
+      server: https://kubernetes.example.test
+      certificate-authority-data: dGVzdA==
+users:
+  - name: dev-user
+    user:
+      token: route-test-token
+contexts:
+  - name: dev
+    context:
+      cluster: dev-cluster
+      user: dev-user
+"""
 
 
 class TestConfig:
@@ -236,6 +258,10 @@ class ProjectRoutesTest(unittest.TestCase):
             json={
                 "name": "prod-cn-1",
                 "kube_context": "gke-prod-cn-1",
+                "environment_label": "production",
+                "kubeconfig": VALID_KUBECONFIG.replace(
+                    "current-context: dev", "current-context: gke-prod-cn-1"
+                ).replace("name: dev\n", "name: gke-prod-cn-1\n"),
                 "namespace_prefix": "payments",
             },
         )
@@ -244,6 +270,68 @@ class ProjectRoutesTest(unittest.TestCase):
         self.assertEqual(cluster_response.status_code, 201)
         self.assertEqual(member_response.get_json()["data"]["role"], "admin")
         self.assertEqual(cluster_response.get_json()["data"]["name"], "prod-cn-1")
+
+    @patch("app.routes.projects.cluster_service.test_connection")
+    def test_transient_cluster_connection_uses_standard_envelope_without_persisting(self, test_connection):
+        test_connection.return_value = {
+            "connected": True,
+            "message": "Kubernetes API 连接成功",
+            "api_server": "https://kubernetes.example.test",
+            "kubernetes_version": "v1.31.2",
+        }
+
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/clusters/test-connection",
+            self.csrf_token,
+            json={"kubeconfig": VALID_KUBECONFIG, "kube_context": "dev"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(
+            set(body),
+            {"success", "message", "data", "timestamp", "trace_id"},
+        )
+        self.assertTrue(body["data"]["connected"])
+        self.assertEqual(KubernetesCluster.query.count(), 0)
+        test_connection.assert_called_once_with(VALID_KUBECONFIG, "dev")
+
+    @patch("app.routes.projects.cluster_service.test_saved_connection")
+    def test_saved_cluster_connection_is_project_scoped(self, test_saved_connection):
+        create_response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/clusters",
+            self.csrf_token,
+            json={
+                "name": "payments-dev",
+                "environment_label": "development",
+                "kubeconfig": VALID_KUBECONFIG,
+                "kube_context": "dev",
+            },
+        )
+        cluster_id = create_response.get_json()["data"]["id"]
+        test_saved_connection.return_value = {
+            "connected": False,
+            "message": "Kubernetes 网络不可达",
+        }
+
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/clusters/{cluster_id}/test-connection",
+            self.csrf_token,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["data"]["connected"])
+
+        cross_project = csrf_post(
+            self.client,
+            f"/api/projects/{self.other_project_id}/clusters/{cluster_id}/test-connection",
+            self.csrf_token,
+        )
+        self.assertEqual(cross_project.status_code, 404)
+        self.assertEqual(cross_project.get_json()["error"]["code"], "CLUSTER_NOT_FOUND")
+        test_saved_connection.assert_called_once()
 
     def test_registry_list_is_project_scoped(self):
         db.session.add_all([

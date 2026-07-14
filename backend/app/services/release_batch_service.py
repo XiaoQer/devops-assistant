@@ -1,5 +1,6 @@
 from app.extensions import db
 from app.models import ApplicationEnvironment, ApplicationReleaseBatch, ApplicationReleaseTarget
+from sqlalchemy.exc import IntegrityError
 from app.services.application_service import ApplicationService
 from app.services.git_metadata_service import GitMetadataService
 from app.utils.errors import ApiError
@@ -107,5 +108,13 @@ class ReleaseBatchService:
                 build_version_id=batch.build_version_id,
                 status="Pending",
             ))
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            raise ApiError(
+                "发布环境已经关联到该构建版本",
+                409,
+                "RELEASE_TARGET_EXISTS",
+            ) from None
         return batch

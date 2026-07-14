@@ -3,7 +3,15 @@ from unittest.mock import patch
 
 from app import create_app
 from app.extensions import db
-from app.models import Application, ApplicationEnvironment, Project, ReleaseRecord
+from app.models import (
+    Application,
+    ApplicationBuildVersion,
+    ApplicationEnvironment,
+    ApplicationReleaseBatch,
+    ApplicationReleaseTarget,
+    Project,
+    ReleaseRecord,
+)
 from app.services.application_service import ApplicationService
 from app.utils.errors import ApiError
 
@@ -152,6 +160,85 @@ class ApplicationServiceTest(unittest.TestCase):
         self.assertEqual(app.status, "deploying")
         self.assertEqual(app.image_tag, "2026.07.02")
         self.assertEqual(ReleaseRecord.query.count(), 1)
+
+    @patch("app.services.application_service.TektonService.create_deploy_pipeline_run")
+    @patch("app.services.application_service.BuildVersionService.require_publishable")
+    @patch("app.services.application_service.ConfigurationService.materialize")
+    @patch("app.services.application_service.KubernetesService", FakeKubernetesService)
+    def test_deploy_recovers_existing_run_and_updates_release_target_atomically(
+        self, materialize, require_publishable, create_deploy_pipeline_run
+    ):
+        materialize.return_value = {}
+        app = Application(
+            project_id=self.project.id,
+            name="payment-service",
+            repo_url="https://github.com/example/payment-service.git",
+            branch="main",
+            language="java",
+            framework="spring-boot",
+            build_type="maven",
+            namespace="default",
+            image_name="registry.local/payment-service",
+            image_tag="latest",
+            port=8080,
+        )
+        db.session.add(app)
+        db.session.flush()
+        environment = ApplicationEnvironment(
+            application_id=app.id,
+            environment_name="dev",
+            namespace="payment-service-dev",
+        )
+        build = ApplicationBuildVersion(
+            application_id=app.id,
+            project_id=self.project.id,
+            version="build-123",
+            git_repo=app.repo_url,
+            git_branch="main",
+            git_commit="abc123",
+            image_name=app.image_name,
+            image_tag="build-123",
+            status="Succeeded",
+            created_by="admin",
+        )
+        batch = ApplicationReleaseBatch(
+            application_id=app.id,
+            project_id=self.project.id,
+            build_version=build,
+            branch="main",
+            git_commit="abc123",
+            status="Deploying",
+            created_by="admin",
+        )
+        db.session.add_all([environment, build, batch])
+        db.session.flush()
+        target = ApplicationReleaseTarget(
+            batch=batch,
+            environment_id=environment.id,
+            build_version_id=build.id,
+            status="Starting",
+        )
+        db.session.add(target)
+        db.session.commit()
+        require_publishable.return_value = build
+
+        execution, _release = ApplicationService().deploy(
+            app,
+            {
+                "environment": "dev",
+                "build_version_id": build.id,
+            },
+            "admin",
+            recovery={
+                "release_target_id": target.id,
+                "existing_pipeline_run_name": "payment-service-deploy-existing",
+            },
+        )
+
+        self.assertEqual(execution.pipeline_run_name, "payment-service-deploy-existing")
+        self.assertEqual(target.pipeline_run_name, "payment-service-deploy-existing")
+        self.assertEqual(target.status, "Running")
+        create_deploy_pipeline_run.assert_not_called()
 
 
 if __name__ == "__main__":

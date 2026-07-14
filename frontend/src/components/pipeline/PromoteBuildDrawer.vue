@@ -15,8 +15,8 @@
     </template>
 
     <el-alert
-      v-if="build.status !== 'Succeeded'"
-      title="只有成功的构建版本才能追加发布环境"
+      v-if="!canSubmitBuild"
+      title="只有与当前批次匹配的成功构建版本才能追加发布环境"
       type="warning"
       show-icon
       :closable="false"
@@ -29,7 +29,7 @@
           multiple
           class="full-width"
           placeholder="选择尚未关联的环境"
-          :disabled="build.status !== 'Succeeded'"
+          :disabled="!canSubmitBuild"
         >
           <el-option
             v-for="environment in availableEnvironments"
@@ -54,7 +54,7 @@
         <el-button
           type="primary"
           :loading="submitting"
-          :disabled="build.status !== 'Succeeded' || !selectedIds.length"
+          :disabled="!canSubmitBuild || !selectedIds.length"
           @click="submit"
         >
           确认发布
@@ -70,8 +70,8 @@ import { ElMessage } from 'element-plus'
 import { applicationApi } from '../../api/application'
 import type {
   Application,
-  ApplicationEnvironment,
   BuildVersion,
+  CicdEnvironmentOption,
   ReleaseBatch,
 } from '../../types'
 
@@ -81,7 +81,7 @@ const props = defineProps<{
   application: Application
   build: BuildVersion
   batch: ReleaseBatch
-  environments: ApplicationEnvironment[]
+  environments: CicdEnvironmentOption[]
 }>()
 
 const emit = defineEmits<{
@@ -91,6 +91,10 @@ const emit = defineEmits<{
 
 const selectedIds = ref<number[]>([])
 const submitting = ref(false)
+const canSubmitBuild = computed(() => (
+  props.build.status === 'Succeeded'
+  && props.batch.build_version_id === props.build.id
+))
 const associatedIds = computed(() => new Set(
   props.batch.targets.map(target => target.environment_id),
 ))
@@ -99,7 +103,7 @@ const availableEnvironments = computed(() => (
 ))
 
 async function submit() {
-  if (!selectedIds.value.length || props.build.status !== 'Succeeded') return
+  if (!selectedIds.value.length || !canSubmitBuild.value) return
   submitting.value = true
   try {
     const batch = await applicationApi.addReleaseBatchTargets(
@@ -118,7 +122,7 @@ async function submit() {
   }
 }
 
-function environmentLabel(environment: ApplicationEnvironment) {
+function environmentLabel(environment: CicdEnvironmentOption) {
   const name = environment.display_name || environment.environment_name
   return environment.approval_required ? `${name}（需审批）` : name
 }

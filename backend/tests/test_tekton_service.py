@@ -7,12 +7,18 @@ from app.services.tekton_service import TektonService
 
 
 class CustomApi:
-    def create_namespaced_custom_object(self, *args):
+    def create_namespaced_custom_object(self, *args, **kwargs):
         self.args = args
+        self.kwargs = kwargs
         return {"metadata": {"name": "demo-run-abc"}}
 
     def get_namespaced_custom_object(self, *args):
         return self.run
+
+    def list_namespaced_custom_object(self, *args, **kwargs):
+        self.list_args = args
+        self.list_kwargs = kwargs
+        return getattr(self, "list_result", {"items": []})
 
 
 class Kubernetes:
@@ -115,6 +121,36 @@ def test_configured_registry_secret_is_required():
     secret = body["spec"]["taskRunTemplate"]["podTemplate"]["volumes"][0]["secret"]
     assert secret["secretName"] == "aegis-registry-credentials"
     assert secret["optional"] is False
+
+
+def test_deploy_pipeline_run_carries_release_target_label_and_can_be_recovered():
+    kubernetes = Kubernetes()
+    service = TektonService(kubernetes)
+
+    service.create_deploy_pipeline_run(
+        "java-maven-deploy-only",
+        "demo",
+        "registry.local/demo",
+        "build-123",
+        "devops-platform",
+        "demo-dev",
+        8080,
+        labels={"aegis.dev/release-target-id": "42"},
+    )
+    body = kubernetes.custom_api.args[-1]
+    assert body["metadata"]["labels"]["aegis.dev/release-target-id"] == "42"
+    assert kubernetes.custom_api.kwargs["_request_timeout"] == 30
+
+    kubernetes.custom_api.list_result = {
+        "items": [{"metadata": {"name": "demo-deploy-existing"}}]
+    }
+    found = service.find_pipeline_run_by_label(
+        "devops-platform", "aegis.dev/release-target-id", "42"
+    )
+    assert found == "demo-deploy-existing"
+    assert kubernetes.custom_api.list_kwargs["label_selector"] == (
+        "aegis.dev/release-target-id=42"
+    )
 
 
 def test_retry_pipeline_run_reuses_existing_spec_with_retry_label():

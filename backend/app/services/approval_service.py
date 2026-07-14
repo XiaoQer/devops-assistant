@@ -8,7 +8,7 @@ from .build_version_service import BuildVersionService
 
 
 class ApprovalService:
-    def submit(self, app, payload, applicant):
+    def submit(self, app, payload, applicant, release_target_id=None):
         environment_name = payload.get("environment", "prod")
         environment = ApplicationEnvironment.query.filter_by(
             application_id=app.id, environment_name=environment_name
@@ -28,6 +28,8 @@ class ApprovalService:
             status="Pending",
         ).first()
         if duplicate:
+            self._attach_target(duplicate, release_target_id, environment, build_version)
+            db.session.commit()
             return duplicate
         approval = ApprovalRecord(
             application_id=app.id,
@@ -43,8 +45,32 @@ class ApprovalService:
             comment=payload.get("comment"),
         )
         db.session.add(approval)
+        db.session.flush()
+        self._attach_target(approval, release_target_id, environment, build_version)
         db.session.commit()
         return approval
+
+    def _attach_target(self, approval, target_id, environment, build_version):
+        if not target_id:
+            return
+        target = db.session.get(ApplicationReleaseTarget, int(target_id))
+        if (
+            not target
+            or target.batch.application_id != approval.application_id
+            or target.batch.project_id != approval.project_id
+            or target.environment_id != environment.id
+            or target.batch.build_version_id != (
+                build_version.id if build_version else None
+            )
+        ):
+            raise ApiError(
+                "发布目标与审批的应用、环境或构建版本不匹配",
+                409,
+                "RELEASE_TARGET_CONTEXT_MISMATCH",
+            )
+        target.approval_id = approval.id
+        target.status = "WaitingApproval"
+        target.error_message = None
 
     def approve(self, approval, approver, comment=None):
         if approval.status != "Pending":

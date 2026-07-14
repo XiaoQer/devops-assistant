@@ -4,7 +4,14 @@ from unittest.mock import patch
 
 from app import create_app
 from app.extensions import db
-from app.models import Application, ApplicationEnvironment, ApprovalRecord, Project
+from app.models import (
+    Application,
+    ApplicationEnvironment,
+    ApplicationReleaseBatch,
+    ApplicationReleaseTarget,
+    ApprovalRecord,
+    Project,
+)
 from app.services.approval_service import ApprovalService
 from app.utils.errors import ApiError
 
@@ -72,6 +79,42 @@ class ApprovalServiceTest(unittest.TestCase):
             {"kubeconfig", "credentials", "password", "secret", "token"}
             & serialized.keys()
         )
+
+    def test_submit_links_release_target_in_same_transaction(self):
+        environment = ApplicationEnvironment.query.filter_by(
+            application_id=self.application.id,
+            environment_name="prod",
+        ).one()
+        batch = ApplicationReleaseBatch(
+            application_id=self.application.id,
+            project_id=self.project.id,
+            branch="main",
+            git_commit="abc123",
+            status="Deploying",
+            created_by="alice",
+        )
+        db.session.add(batch)
+        db.session.flush()
+        target = ApplicationReleaseTarget(
+            batch=batch,
+            environment_id=environment.id,
+            status="Starting",
+        )
+        db.session.add(target)
+        db.session.commit()
+
+        approval = ApprovalService().submit(
+            self.application,
+            {
+                "environment": "prod",
+                "image_tag": "v-target",
+            },
+            "alice",
+            release_target_id=target.id,
+        )
+
+        self.assertEqual(target.approval_id, approval.id)
+        self.assertEqual(target.status, "WaitingApproval")
 
     @patch("app.services.approval_service.ApplicationService.deploy")
     def test_approve_marks_record_and_links_pipeline_run(self, deploy):

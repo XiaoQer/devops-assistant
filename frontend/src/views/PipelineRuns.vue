@@ -314,7 +314,7 @@ async function retry(item: CicdWorkbenchItem) {
 }
 
 function pipelineName(item: CicdWorkbenchItem) {
-  return item.latest_execution?.pipeline_run_name || item.latest_build?.pipeline_run_name
+  return item.current_pipeline_run
 }
 
 function isRunning(item: CicdWorkbenchItem) {
@@ -327,6 +327,7 @@ function isFailed(item: CicdWorkbenchItem) {
 
 function canPromote(item: CicdWorkbenchItem) {
   if (item.latest_build?.status !== 'Succeeded' || !item.latest_batch) return false
+  if (item.latest_batch.build_version_id !== item.latest_build.id) return false
   const associated = new Set(item.latest_batch.targets.map(target => target.environment_id))
   return item.available_environments.some(environment => !associated.has(environment.id))
 }

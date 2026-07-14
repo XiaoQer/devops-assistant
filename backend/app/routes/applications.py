@@ -61,6 +61,12 @@ def application_detail(project_id, app_id):
 @bp.post("/<int:app_id>/deploy")
 def deploy_application(project_id, app_id):
     payload = json_object(request.get_json(silent=True))
+    if {"release_target_id", "existing_pipeline_run_name"}.intersection(payload):
+        raise ApiError(
+            "请求包含仅供内部协调使用的字段",
+            400,
+            "INTERNAL_DELIVERY_FIELDS_FORBIDDEN",
+        )
     app = get_application(project_id, app_id)
     environment_name = require_string(payload, "environment")
     payload["environment"] = environment_name

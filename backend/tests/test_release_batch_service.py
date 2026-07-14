@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import patch
 
+from sqlalchemy.exc import IntegrityError
+
 from app import create_app
 from app.extensions import db
 from app.models import (
@@ -206,6 +208,25 @@ class ReleaseBatchServiceTest(unittest.TestCase):
             ReleaseBatchService().add_targets(self.application, batch.id, [])
 
         self.assertEqual(error.exception.code, "RELEASE_ENVIRONMENTS_REQUIRED")
+
+    def test_add_targets_translates_unique_constraint_race(self):
+        batch = self.create_batch()
+        database_error = IntegrityError(
+            "insert release target",
+            {},
+            Exception("uq_release_target_environment"),
+        )
+
+        with patch.object(db.session, "commit", side_effect=database_error), patch.object(
+            db.session, "rollback"
+        ) as rollback:
+            with self.assertRaises(ApiError) as error:
+                ReleaseBatchService().add_targets(
+                    self.application, batch.id, [self.dev.id]
+                )
+
+        self.assertEqual(error.exception.code, "RELEASE_TARGET_EXISTS")
+        rollback.assert_called_once_with()
 
 
 if __name__ == "__main__":

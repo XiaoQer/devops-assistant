@@ -62,9 +62,17 @@ export interface CicdWorkbenchItem {
   latest_build?: BuildVersion
   latest_batch?: ReleaseBatch
   latest_execution?: Execution
-  available_environments: ApplicationEnvironment[]
+  available_environments: CicdEnvironmentOption[]
   activity_status: string
   last_activity_at?: string
+  current_pipeline_run?: string
+}
+
+export interface CicdEnvironmentOption {
+  id: number
+  environment_name: string
+  display_name?: string
+  approval_required: boolean
 }
 
 export interface Release {

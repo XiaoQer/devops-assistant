@@ -122,13 +122,20 @@ class TektonService:
                 ],
             },
         }
-        result = self.custom_api.create_namespaced_custom_object(self.GROUP, self.VERSION, namespace, "pipelineruns", body)
+        result = self.custom_api.create_namespaced_custom_object(
+            self.GROUP,
+            self.VERSION,
+            namespace,
+            "pipelineruns",
+            body,
+            _request_timeout=30,
+        )
         return result["metadata"]["name"]
 
     def create_deploy_pipeline_run(
         self, pipeline_name, app_name, image_name, image_tag, namespace,
         deploy_namespace, container_port, deployment_config=None,
-        kubeconfig_secret_name="", kube_context="",
+        kubeconfig_secret_name="", kube_context="", labels=None,
     ):
         deployment_config = deployment_config or {}
         params = [
@@ -152,13 +159,36 @@ class TektonService:
             {"name": "kubeconfig_secret_name", "value": kubeconfig_secret_name},
             {"name": "kube_context", "value": kube_context},
         ]
+        metadata_labels = {
+            "app.kubernetes.io/name": app_name,
+            "aegis.dev/pipeline-type": "deploy",
+            **(labels or {}),
+        }
         body = {
             "apiVersion": "tekton.dev/v1", "kind": "PipelineRun",
-            "metadata": {"generateName": f"{app_name}-deploy-", "namespace": namespace, "labels": {"app.kubernetes.io/name": app_name, "aegis.dev/pipeline-type": "deploy"}},
+            "metadata": {"generateName": f"{app_name}-deploy-", "namespace": namespace, "labels": metadata_labels},
             "spec": {"taskRunTemplate": {"serviceAccountName": "devops-platform-pipeline"}, "pipelineRef": {"name": pipeline_name}, "params": params},
         }
-        result = self.custom_api.create_namespaced_custom_object(self.GROUP, self.VERSION, namespace, "pipelineruns", body)
+        result = self.custom_api.create_namespaced_custom_object(
+            self.GROUP,
+            self.VERSION,
+            namespace,
+            "pipelineruns",
+            body,
+            _request_timeout=30,
+        )
         return result["metadata"]["name"]
+
+    def find_pipeline_run_by_label(self, namespace, label, value):
+        result = self.custom_api.list_namespaced_custom_object(
+            self.GROUP,
+            self.VERSION,
+            namespace,
+            "pipelineruns",
+            label_selector=f"{label}={value}",
+        )
+        items = result.get("items", [])
+        return items[0]["metadata"]["name"] if items else None
 
     def get_pipeline_run_status(self, pipeline_run_name, namespace):
         run = self.custom_api.get_namespaced_custom_object(

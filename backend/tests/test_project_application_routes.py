@@ -295,6 +295,43 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
         add_targets.assert_not_called()
         reconciler.assert_not_called()
 
+    def test_deploy_rejects_internal_recovery_fields(self):
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}/deploy",
+            self.csrf_token,
+            json={
+                "environment": "dev",
+                "release_target_id": 999,
+                "existing_pipeline_run_name": "forged-run",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json()["error"]["code"],
+            "INTERNAL_DELIVERY_FIELDS_FORBIDDEN",
+        )
+
+    def test_approval_submit_rejects_internal_recovery_field(self):
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_a.id}/approvals",
+            self.csrf_token,
+            json={
+                "application_id": self.application.id,
+                "environment": "dev",
+                "release_target_id": 999,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json()["error"]["code"],
+            "INTERNAL_DELIVERY_FIELDS_FORBIDDEN",
+        )
+
     @patch("app.routes.pipelines.TektonService")
     def test_pipeline_logs_and_retry_deny_cross_project_before_tekton(self, tekton):
         logs = self.client.get(

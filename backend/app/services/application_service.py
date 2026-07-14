@@ -3,7 +3,7 @@ from uuid import uuid4
 from flask import current_app
 
 from app.extensions import db
-from app.models import Application, PipelineExecution, ApplicationEnvironment, ApplicationBuildVersion
+from app.models import Application, PipelineExecution, ApplicationEnvironment, ApplicationBuildVersion, ApplicationReleaseTarget
 from app.utils.errors import ApiError
 from .repo_analyzer_service import RepoAnalyzerService
 from .tekton_service import TektonService
@@ -125,8 +125,9 @@ class ApplicationService:
         db.session.commit()
         return version
 
-    def deploy(self, app, payload=None, deploy_user="local-user"):
+    def deploy(self, app, payload=None, deploy_user="local-user", recovery=None):
         payload = payload or {}
+        recovery = recovery or {}
         environment_name = payload.get("environment", "dev")
         environment = ApplicationEnvironment.query.filter_by(
             application_id=app.id, environment_name=environment_name
@@ -140,6 +141,26 @@ class ApplicationService:
             build_version = BuildVersionService().require_publishable(
                 app, int(payload["build_version_id"])
             )
+        release_target = None
+        if recovery.get("release_target_id"):
+            release_target = db.session.get(
+                ApplicationReleaseTarget,
+                int(recovery["release_target_id"]),
+            )
+            if (
+                not release_target
+                or release_target.batch.application_id != app.id
+                or release_target.batch.project_id != app.project_id
+                or release_target.environment_id != (environment.id if environment else None)
+                or release_target.batch.build_version_id != (
+                    build_version.id if build_version else None
+                )
+            ):
+                raise ApiError(
+                    "发布目标与应用、环境或构建版本不匹配",
+                    409,
+                    "RELEASE_TARGET_CONTEXT_MISMATCH",
+                )
         pipeline = self.DEPLOY_PIPELINES.get((app.language, app.build_type)) if build_version else self.PIPELINES.get((app.language, app.build_type))
         if not pipeline:
             raise ApiError(
@@ -232,11 +253,21 @@ class ApplicationService:
         if build_version:
             payload["build_version_id"] = build_version.id
         if build_version:
-            run_name = TektonService().create_deploy_pipeline_run(
-                pipeline, app.name, image_name, image_tag, tekton_namespace,
-                deploy_namespace, app.port, deployment_config,
-                kubeconfig_secret_name, kube_context,
-            )
+            renew_claim = recovery.get("renew_claim")
+            if renew_claim:
+                renew_claim()
+            run_name = recovery.get("existing_pipeline_run_name")
+            if not run_name:
+                release_target_id = recovery.get("release_target_id")
+                labels = (
+                    {"aegis.dev/release-target-id": str(release_target_id)}
+                    if release_target_id else None
+                )
+                run_name = TektonService().create_deploy_pipeline_run(
+                    pipeline, app.name, image_name, image_tag, tekton_namespace,
+                    deploy_namespace, app.port, deployment_config,
+                    kubeconfig_secret_name, kube_context, labels,
+                )
         else:
             run_name = TektonService().create_pipeline_run(
                 pipeline, app.name, app.repo_url, app.branch, image_name,
@@ -265,6 +296,11 @@ class ApplicationService:
         release = ReleaseService().create_deploy_release(
             app, execution, payload, deploy_user
         )
+        if release_target:
+            release_target.pipeline_run_name = run_name
+            release_target.build_version_id = build_version.id if build_version else None
+            release_target.status = "Running"
+            release_target.error_message = None
         db.session.commit()
         return execution, release
 

@@ -62,6 +62,12 @@ def list_approvals(project_id):
 def submit_approval(project_id):
     ProjectService().get(project_id)
     payload = json_object(request.get_json(silent=True), required=True)
+    if "release_target_id" in payload:
+        raise ApiError(
+            "请求包含仅供内部协调使用的字段",
+            400,
+            "INTERNAL_DELIVERY_FIELDS_FORBIDDEN",
+        )
     application_id = require_positive_int(payload, "application_id")
     app = ApplicationService().get(project_id, application_id)
     item = ApprovalService().submit(

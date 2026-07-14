@@ -111,7 +111,7 @@ import { ElMessage } from 'element-plus'
 import { applicationApi } from '../../api/application'
 import type {
   Application,
-  ApplicationEnvironment,
+  CicdEnvironmentOption,
   GitBranch,
   GitCommit,
   ReleaseBatch,
@@ -121,7 +121,7 @@ const props = defineProps<{
   modelValue: boolean
   projectId: number
   application?: Application
-  environments: ApplicationEnvironment[]
+  environments: CicdEnvironmentOption[]
 }>()
 
 const emit = defineEmits<{
@@ -220,7 +220,7 @@ function format(value: string) {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
-function environmentLabel(environment: ApplicationEnvironment) {
+function environmentLabel(environment: CicdEnvironmentOption) {
   const name = environment.display_name || environment.environment_name
   return environment.approval_required ? `${name}（需审批）` : name
 }

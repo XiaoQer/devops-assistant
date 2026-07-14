@@ -168,11 +168,7 @@ def delete_config(project_id, app_id, config_id):
 def config_history(project_id, app_id, config_group_id):
     get_app(project_id, app_id)
     service = ConfigurationService()
-    items = [
-        item
-        for item in service.history(config_group_id)
-        if item.application_id == app_id
-    ]
+    items = service.history(app_id, config_group_id)
     if not items:
         raise ApiError("配置不存在", 404, "CONFIG_NOT_FOUND")
     return success([service.serialize(item) for item in items])

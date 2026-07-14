@@ -4,7 +4,7 @@ from flask import current_app
 
 from app.extensions import db
 from app.models import (
-    ReleaseRecord, PipelineExecution, ApplicationEnvironment
+    Application, ReleaseRecord, PipelineExecution, ApplicationEnvironment
 )
 from app.utils.errors import ApiError
 from .kubernetes_service import KubernetesService
@@ -34,7 +34,10 @@ class ReleaseService:
         return release
 
     def list_releases(self, app, environment=None, sync=True):
-        query = ReleaseRecord.query.filter_by(application_id=app.id)
+        query = ReleaseRecord.query.filter_by(
+            application_id=app.id,
+            project_id=app.project_id,
+        )
         if environment:
             query = query.filter_by(environment=environment)
         releases = query.order_by(ReleaseRecord.created_at.desc()).all()
@@ -43,16 +46,37 @@ class ReleaseService:
         return releases
 
     def sync_all(self):
-        releases = ReleaseRecord.query.filter(
-            ReleaseRecord.pipeline_run_name.isnot(None),
-            ReleaseRecord.deploy_status.notin_(self.FINAL_STATUSES),
-        ).all()
+        releases = (
+            ReleaseRecord.query.join(Application)
+            .filter(
+                ReleaseRecord.project_id == Application.project_id,
+                ReleaseRecord.pipeline_run_name.isnot(None),
+                ReleaseRecord.deploy_status.notin_(self.FINAL_STATUSES),
+            )
+            .all()
+        )
+        self._sync_pipeline_releases(releases)
+        return len(releases)
+
+    def sync_project(self, project_id):
+        releases = (
+            ReleaseRecord.query.join(Application)
+            .filter(
+                ReleaseRecord.project_id == project_id,
+                Application.project_id == project_id,
+                ReleaseRecord.pipeline_run_name.isnot(None),
+                ReleaseRecord.deploy_status.notin_(self.FINAL_STATUSES),
+            )
+            .all()
+        )
         self._sync_pipeline_releases(releases)
         return len(releases)
 
     def rollback(self, app, release_id, environment, deploy_user):
         source = ReleaseRecord.query.filter_by(
-            id=release_id, application_id=app.id
+            id=release_id,
+            application_id=app.id,
+            project_id=app.project_id,
         ).first()
         if not source:
             raise ApiError("发布记录不存在", 404, "RELEASE_NOT_FOUND")
@@ -112,7 +136,9 @@ class ReleaseService:
                     if timestamp else datetime.now(timezone.utc)
                 )
             execution = PipelineExecution.query.filter_by(
-                pipeline_run_name=release.pipeline_run_name
+                pipeline_run_name=release.pipeline_run_name,
+                project_id=release.project_id,
+                application_id=release.application_id,
             ).first()
             if execution:
                 execution.status = status["status"]
@@ -122,7 +148,10 @@ class ReleaseService:
                         status["started_at"].replace("Z", "+00:00")
                     )
                 execution.finished_at = release.finished_at
-            if release.application:
+            if (
+                release.application
+                and release.application.project_id == release.project_id
+            ):
                 release.application.status = {
                     "Succeeded": "deployed",
                     "Failed": "failed",
@@ -132,7 +161,11 @@ class ReleaseService:
                 application_id=release.application_id,
                 environment_name=release.environment,
             ).first()
-            if environment:
+            if (
+                environment
+                and release.application
+                and release.application.project_id == release.project_id
+            ):
                 environment.status = {
                     "Succeeded": "Progressing",
                     "Failed": "Failed",

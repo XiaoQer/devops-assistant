@@ -1,6 +1,6 @@
 from flask import Blueprint, current_app, request
 
-from app.models import PipelineExecution
+from app.models import Application, PipelineExecution
 from app.services.project_service import ProjectService
 from app.services.tekton_service import TektonService
 from app.utils.errors import ApiError
@@ -14,14 +14,19 @@ bp = Blueprint(
 
 
 def namespace():
-    return request.args.get("namespace", current_app.config["TEKTON_NAMESPACE"])
+    return current_app.config["TEKTON_NAMESPACE"]
 
 
 def get_execution(project_id, pipeline_run_name):
-    execution = PipelineExecution.query.filter_by(
-        project_id=project_id,
-        pipeline_run_name=pipeline_run_name,
-    ).first()
+    execution = (
+        PipelineExecution.query.join(Application)
+        .filter(
+            PipelineExecution.project_id == project_id,
+            PipelineExecution.pipeline_run_name == pipeline_run_name,
+            Application.project_id == project_id,
+        )
+        .first()
+    )
     if not execution:
         raise ApiError(
             "PipelineExecution 不存在",
@@ -36,10 +41,13 @@ def list_pipelines(project_id):
     ProjectService().get(project_id)
     page = max(request.args.get("page", 1, type=int), 1)
     page_size = min(max(request.args.get("pageSize", 20, type=int), 1), 100)
-    query = PipelineExecution.query.filter_by(project_id=project_id)
+    query = PipelineExecution.query.join(Application).filter(
+        PipelineExecution.project_id == project_id,
+        Application.project_id == project_id,
+    )
     status = request.args.get("status")
     if status:
-        query = query.filter_by(status=status)
+        query = query.filter(PipelineExecution.status == status)
     search = request.args.get("query", "").strip()
     if search:
         query = query.filter(PipelineExecution.pipeline_run_name.ilike(f"%{search}%"))

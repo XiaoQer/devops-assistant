@@ -13,6 +13,7 @@ from app.models import (
     ReleaseRecord,
     User,
 )
+from app.services.configuration_service import ConfigurationService
 
 from auth_helpers import create_user, csrf_post, login
 
@@ -153,6 +154,248 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
             ),
             "APPROVAL_NOT_FOUND",
         )
+
+    @patch("app.routes.pipelines.TektonService")
+    def test_pipeline_logs_and_retry_deny_cross_project_before_tekton(self, tekton):
+        logs = self.client.get(
+            f"/api/projects/{self.project_b.id}/pipelines/"
+            f"{self.execution.pipeline_run_name}/logs"
+        )
+        retry = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_b.id}/pipelines/"
+            f"{self.execution.pipeline_run_name}/retry",
+            self.csrf_token,
+        )
+
+        self.assert_not_found(logs, "PIPELINE_EXECUTION_NOT_FOUND")
+        self.assert_not_found(retry, "PIPELINE_EXECUTION_NOT_FOUND")
+        tekton.assert_not_called()
+
+    @patch("app.routes.pipelines.TektonService")
+    def test_pipeline_operations_always_use_server_namespace(self, tekton):
+        service = tekton.return_value
+        service.get_pipeline_run_status.return_value = {"status": "Running"}
+        service.list_task_runs.return_value = []
+        service.get_pipeline_run_log_details.return_value = {"status": "Running"}
+        service.get_pipeline_run_logs.return_value = "logs"
+        service.retry_pipeline_run.return_value = {"pipeline_run_name": "retried"}
+        prefix = (
+            f"/api/projects/{self.project_a.id}/pipelines/"
+            f"{self.execution.pipeline_run_name}"
+        )
+
+        self.assertEqual(
+            self.client.get(f"{prefix}/status?namespace=attacker").status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.get(f"{prefix}/logs?namespace=attacker").status_code,
+            200,
+        )
+        self.assertEqual(
+            csrf_post(
+                self.client,
+                f"{prefix}/retry?namespace=attacker",
+                self.csrf_token,
+            ).status_code,
+            201,
+        )
+
+        service.get_pipeline_run_status.assert_called_once_with(
+            self.execution.pipeline_run_name, TestConfig.TEKTON_NAMESPACE
+        )
+        service.list_task_runs.assert_called_once_with(
+            self.execution.pipeline_run_name, TestConfig.TEKTON_NAMESPACE
+        )
+        service.get_pipeline_run_log_details.assert_called_once_with(
+            self.execution.pipeline_run_name, TestConfig.TEKTON_NAMESPACE
+        )
+        service.get_pipeline_run_logs.assert_called_once_with(
+            self.execution.pipeline_run_name, TestConfig.TEKTON_NAMESPACE
+        )
+        service.retry_pipeline_run.assert_called_once_with(
+            self.execution.pipeline_run_name, TestConfig.TEKTON_NAMESPACE
+        )
+
+    @patch("app.services.release_service.KubernetesService")
+    def test_inconsistent_release_project_id_is_hidden_and_cannot_rollback(
+        self, kubernetes
+    ):
+        inconsistent = ReleaseRecord(
+            application_id=self.application.id,
+            project_id=self.project_b.id,
+            release_type="deploy",
+            environment="dev",
+            git_repo=self.application.repo_url,
+            git_branch="main",
+            image_name=self.application.image_name,
+            image_tag="cross-project",
+            deploy_namespace="payments-dev",
+            deploy_status="Succeeded",
+        )
+        db.session.add(inconsistent)
+        db.session.commit()
+
+        nested = self.client.get(
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}/releases"
+        ).get_json()["data"]
+        project_b_center = self.client.get(
+            f"/api/projects/{self.project_b.id}/releases"
+        ).get_json()["data"]["items"]
+        rollback = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}/rollback",
+            self.csrf_token,
+            json={"release_id": inconsistent.id, "environment": "dev"},
+        )
+
+        self.assertNotIn(inconsistent.id, [item["id"] for item in nested])
+        self.assertNotIn(inconsistent.id, [item["id"] for item in project_b_center])
+        self.assert_not_found(rollback, "RELEASE_NOT_FOUND")
+        kubernetes.assert_not_called()
+
+    def test_inconsistent_execution_project_id_is_hidden_from_all_projects(self):
+        inconsistent = PipelineExecution(
+            application_id=self.application.id,
+            project_id=self.project_b.id,
+            environment="dev",
+            deploy_namespace="payments-dev",
+            pipeline_run_name="payments-run-inconsistent",
+        )
+        db.session.add(inconsistent)
+        db.session.commit()
+
+        nested = self.client.get(
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}/executions"
+        ).get_json()["data"]
+        project_b_center = self.client.get(
+            f"/api/projects/{self.project_b.id}/pipelines"
+        ).get_json()["data"]["items"]
+        detail = self.client.get(
+            f"/api/projects/{self.project_b.id}/pipelines/"
+            f"{inconsistent.pipeline_run_name}/status"
+        )
+
+        self.assertNotIn(inconsistent.id, [item["id"] for item in nested])
+        self.assertNotIn(inconsistent.id, [item["id"] for item in project_b_center])
+        self.assert_not_found(detail, "PIPELINE_EXECUTION_NOT_FOUND")
+
+    @patch("app.services.release_service.TektonService")
+    def test_project_release_center_synchronizes_only_owned_releases(self, tekton):
+        other_application = Application(
+            project_id=self.project_b.id,
+            name="platform",
+            repo_url="https://github.com/example/platform.git",
+            branch="main",
+            language="nodejs",
+            framework="express",
+            build_type="npm",
+            namespace="platform-dev",
+            image_name="registry.local/platform",
+            image_tag="latest",
+            port=3000,
+        )
+        db.session.add(other_application)
+        db.session.flush()
+        self.release.pipeline_run_name = "payments-release-run"
+        other_release = ReleaseRecord(
+            application_id=other_application.id,
+            project_id=self.project_b.id,
+            release_type="deploy",
+            environment="dev",
+            git_repo=other_application.repo_url,
+            git_branch="main",
+            image_name=other_application.image_name,
+            image_tag="v1",
+            pipeline_run_name="platform-release-run",
+            deploy_namespace="platform-dev",
+        )
+        db.session.add(other_release)
+        db.session.commit()
+        tekton.return_value.get_pipeline_run_status.return_value = {
+            "status": "Running"
+        }
+
+        response = self.client.get(
+            f"/api/projects/{self.project_a.id}/releases"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        tekton.return_value.get_pipeline_run_status.assert_called_once_with(
+            self.release.pipeline_run_name, TestConfig.TEKTON_NAMESPACE
+        )
+
+    @patch("app.services.release_service.TektonService")
+    def test_release_sync_does_not_update_inconsistent_execution(self, tekton):
+        self.release.pipeline_run_name = "shared-release-run"
+        inconsistent = PipelineExecution(
+            application_id=self.application.id,
+            project_id=self.project_b.id,
+            environment="dev",
+            deploy_namespace="payments-dev",
+            pipeline_run_name="shared-release-run",
+            status="Pending",
+        )
+        db.session.add(inconsistent)
+        db.session.commit()
+        tekton.return_value.get_pipeline_run_status.return_value = {
+            "status": "Failed",
+            "message": "build failed",
+        }
+
+        response = self.client.get(
+            f"/api/projects/{self.project_a.id}/releases"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(inconsistent)
+        self.assertEqual(inconsistent.status, "Pending")
+        self.assertEqual(self.release.deploy_status, "Failed")
+
+    def test_config_history_service_scopes_query_by_application(self):
+        other_application = Application(
+            project_id=self.project_b.id,
+            name="history-owner",
+            repo_url="https://github.com/example/history-owner.git",
+            branch="main",
+            language="nodejs",
+            framework="express",
+            build_type="npm",
+            namespace="history-owner-dev",
+            image_name="registry.local/history-owner",
+            image_tag="latest",
+            port=3000,
+        )
+        db.session.add(other_application)
+        db.session.flush()
+        other_environment = ApplicationEnvironment(
+            application_id=other_application.id,
+            environment_name="dev",
+            namespace="history-owner-dev",
+        )
+        db.session.add(other_environment)
+        db.session.flush()
+        self.config.config_group_id = "shared-history-group"
+        other_config = ApplicationConfig(
+            config_group_id="shared-history-group",
+            application_id=other_application.id,
+            environment_id=other_environment.id,
+            config_type="env",
+            config_key="LOG_LEVEL",
+            encrypted_value="debug",
+        )
+        db.session.add(other_config)
+        db.session.commit()
+
+        items = ConfigurationService().history(
+            self.application.id, "shared-history-group"
+        )
+
+        self.assertEqual([item.id for item in items], [self.config.id])
 
     def test_config_list_rejects_environment_from_another_project(self):
         other_application = Application(

@@ -1,6 +1,6 @@
 from flask import Blueprint, g, request
 
-from app.models import Application, ApplicationEnvironment
+from app.models import Application, ApplicationEnvironment, PipelineExecution
 from app.services.application_service import ApplicationService
 from app.services.deployment_plan_service import DeploymentPlanService
 from app.services.kubernetes_service import KubernetesService
@@ -103,11 +103,11 @@ def deployment_plan(project_id, app_id):
 @bp.get("/<int:app_id>/executions")
 def list_executions(project_id, app_id):
     app = get_application(project_id, app_id)
-    return success([
-        execution.to_dict()
-        for execution in app.executions
-        if execution.project_id == project_id
-    ])
+    executions = PipelineExecution.query.filter_by(
+        application_id=app.id,
+        project_id=project_id,
+    ).all()
+    return success([execution.to_dict() for execution in executions])
 
 
 @bp.get("/<int:app_id>/releases")

@@ -73,9 +73,10 @@ class ConfigurationService:
         db.session.commit()
         return item
 
-    def history(self, config_group_id):
+    def history(self, app_id, config_group_id):
         return ApplicationConfig.query.filter_by(
-            config_group_id=config_group_id
+            application_id=app_id,
+            config_group_id=config_group_id,
         ).order_by(ApplicationConfig.version.desc()).all()
 
     def delete(self, item):

@@ -108,6 +108,13 @@ def list_build_versions(project_id, app_id):
     return success(BuildVersionService().list(get_application(project_id, app_id)))
 
 
+@bp.get("/<int:app_id>/build-versions/<int:build_id>")
+def get_build_version(project_id, app_id, build_id):
+    app = get_application(project_id, app_id)
+    build = BuildVersionService().get(app, build_id)
+    return success(build.to_dict())
+
+
 @bp.get("/<int:app_id>/git/branches")
 def list_git_branches(project_id, app_id):
     app = get_application(project_id, app_id)

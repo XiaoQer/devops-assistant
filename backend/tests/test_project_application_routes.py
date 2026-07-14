@@ -7,6 +7,7 @@ from app.extensions import db
 from app.models import (
     ApprovalRecord,
     Application,
+    ApplicationBuildVersion,
     ApplicationConfig,
     ApplicationEnvironment,
     ContainerRegistry,
@@ -126,6 +127,55 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
         self.assertFalse(body["success"])
         self.assertEqual(body["error"]["code"], code)
         self.assertTrue(body["trace_id"])
+
+    def create_build_version(self, application, version="build-1"):
+        build = ApplicationBuildVersion(
+            application_id=application.id,
+            project_id=application.project_id,
+            version=version,
+            git_repo=application.repo_url,
+            git_branch=application.branch,
+            git_commit="abc123def456",
+            image_name=application.image_name,
+            image_tag=version,
+            status="Succeeded",
+            created_by="admin",
+        )
+        db.session.add(build)
+        db.session.commit()
+        return build
+
+    def test_get_build_version_is_scoped_to_application(self):
+        build = self.create_build_version(self.application)
+
+        response = self.client.get(
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}/build-versions/{build.id}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["data"]["id"], build.id)
+
+    def test_get_build_version_rejects_other_application(self):
+        other = Application(
+            project_id=self.project_a.id,
+            name="other-build-app",
+            repo_url="https://github.com/example/other.git",
+            branch="main",
+            namespace="other-dev",
+            image_name="registry.local/other",
+            image_tag="latest",
+        )
+        db.session.add(other)
+        db.session.commit()
+        foreign = self.create_build_version(other, "foreign-build")
+
+        response = self.client.get(
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}/build-versions/{foreign.id}"
+        )
+
+        self.assert_not_found(response, "BUILD_VERSION_NOT_FOUND")
 
     def test_application_and_nested_resources_hide_cross_project_ownership(self):
         paths = [

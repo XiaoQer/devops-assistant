@@ -7,7 +7,8 @@ from app.models import (
     Application, ReleaseRecord, PipelineExecution, ApplicationEnvironment
 )
 from app.utils.errors import ApiError
-from .kubernetes_service import KubernetesService
+from .application_runtime_service import ApplicationRuntimeService
+from .delivery_context_service import DeliveryContextService
 from .tekton_service import TektonService
 
 
@@ -80,10 +81,12 @@ class ReleaseService:
         ).first()
         if not source:
             raise ApiError("发布记录不存在", 404, "RELEASE_NOT_FOUND")
-        namespace = source.deploy_namespace or app.namespace
-        result = KubernetesService().rollback_deployment(
-            app.name, namespace, source.image
+        context = DeliveryContextService().resolve(
+            app.project,
+            app,
+            environment or source.environment,
         )
+        result = ApplicationRuntimeService().rollback(context, source.image)
         record = ReleaseRecord(
             application_id=app.id,
             project_id=app.project_id,
@@ -94,7 +97,8 @@ class ReleaseService:
             git_commit=source.git_commit,
             image_name=source.image_name,
             image_tag=source.image_tag,
-            deploy_namespace=namespace,
+            kubernetes_cluster_id=context.cluster.id,
+            deploy_namespace=context.namespace,
             deploy_status="Succeeded",
             deploy_user=deploy_user,
             source_release_id=source.id,

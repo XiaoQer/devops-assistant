@@ -8,6 +8,8 @@ from app.models import (
     Application,
     ApplicationConfig,
     ApplicationEnvironment,
+    ContainerRegistry,
+    KubernetesCluster,
     PipelineExecution,
     Project,
     ReleaseRecord,
@@ -140,6 +142,59 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
                     "APPLICATION_NOT_FOUND",
                 )
 
+    @patch("app.routes.applications.ApplicationRuntimeService")
+    def test_runtime_routes_delegate_to_environment_target_context(self, runtime):
+        cluster = KubernetesCluster(
+            project_id=self.project_a.id,
+            name="payments-target",
+            kube_context="target",
+            environment_label="development",
+            encrypted_kubeconfig="ciphertext",
+            connection_status="connected",
+            is_default=True,
+        )
+        registry = ContainerRegistry(
+            project_id=self.project_a.id,
+            name="payments-registry",
+            provider="ghcr",
+            server="ghcr.io",
+            namespace="acme",
+            username="robot",
+            encrypted_password="ciphertext",
+            connection_status="connected",
+            is_default=True,
+        )
+        db.session.add_all([cluster, registry])
+        db.session.flush()
+        self.environment.kubernetes_cluster_id = cluster.id
+        db.session.commit()
+        service = runtime.return_value
+        service.status.return_value = {"status": "Healthy"}
+        service.pod_logs.return_value = "target logs"
+        service.pod_manifest.return_value = {"kind": "Pod"}
+        prefix = (
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}"
+        )
+
+        status = self.client.get(f"{prefix}/status?environment=dev")
+        logs = self.client.get(
+            f"{prefix}/runtime/pods/pod-1/logs?environment=dev"
+        )
+        manifest = self.client.get(
+            f"{prefix}/runtime/pods/pod-1/yaml?environment=dev"
+        )
+
+        self.assertEqual(status.status_code, 200)
+        self.assertEqual(logs.get_json()["data"]["logs"], "target logs")
+        self.assertEqual(manifest.get_json()["data"], {"kind": "Pod"})
+        for call in (
+            service.status.call_args,
+            service.pod_logs.call_args,
+            service.pod_manifest.call_args,
+        ):
+            self.assertEqual(call.args[0].cluster.id, cluster.id)
+
     def test_delivery_centers_and_pipeline_details_hide_cross_project_records(self):
         self.assert_not_found(
             self.client.get(
@@ -218,9 +273,9 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
             self.execution.pipeline_run_name, TestConfig.TEKTON_NAMESPACE
         )
 
-    @patch("app.services.release_service.KubernetesService")
+    @patch("app.services.release_service.ApplicationRuntimeService")
     def test_inconsistent_release_project_id_is_hidden_and_cannot_rollback(
-        self, kubernetes
+        self, runtime
     ):
         inconsistent = ReleaseRecord(
             application_id=self.application.id,
@@ -255,7 +310,7 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
         self.assertNotIn(inconsistent.id, [item["id"] for item in nested])
         self.assertNotIn(inconsistent.id, [item["id"] for item in project_b_center])
         self.assert_not_found(rollback, "RELEASE_NOT_FOUND")
-        kubernetes.assert_not_called()
+        runtime.assert_not_called()
 
     def test_inconsistent_execution_project_id_is_hidden_from_all_projects(self):
         inconsistent = PipelineExecution(

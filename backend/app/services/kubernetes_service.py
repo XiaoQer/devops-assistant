@@ -32,6 +32,10 @@ class KubernetesService:
             persist_config=False,
         )
         instance.api_client = client.ApiClient(configuration)
+        instance.core_api = client.CoreV1Api(instance.api_client)
+        instance.apps_api = client.AppsV1Api(instance.api_client)
+        instance.networking_api = client.NetworkingV1Api(instance.api_client)
+        instance.custom_api = client.CustomObjectsApi(instance.api_client)
         instance.version_api = client.VersionApi(instance.api_client)
         return instance
 

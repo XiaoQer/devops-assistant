@@ -134,6 +134,11 @@ class KubernetesClusterService:
             )
         return self._decrypt(cluster.encrypted_kubeconfig), cluster.kube_context
 
+    def client(self, cluster):
+        kubeconfig, context = self.credentials(cluster)
+        document = self.inspect_kubeconfig(kubeconfig, context)
+        return KubernetesService.from_kubeconfig(document, context)
+
     def inspect_kubeconfig(self, value, context):
         if not isinstance(value, str) or not value.strip():
             raise ApiError(

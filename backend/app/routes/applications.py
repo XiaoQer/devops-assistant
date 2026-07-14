@@ -2,8 +2,9 @@ from flask import Blueprint, g, request
 
 from app.models import Application, ApplicationEnvironment, PipelineExecution
 from app.services.application_service import ApplicationService
+from app.services.application_runtime_service import ApplicationRuntimeService
+from app.services.delivery_context_service import DeliveryContextService
 from app.services.deployment_plan_service import DeploymentPlanService
-from app.services.kubernetes_service import KubernetesService
 from app.services.release_service import ReleaseService
 from app.services.approval_service import ApprovalService
 from app.services.project_service import ProjectService
@@ -138,40 +139,43 @@ def rollback_application(project_id, app_id):
 @bp.get("/<int:app_id>/status")
 def application_status(project_id, app_id):
     app = get_application(project_id, app_id)
-    environment = request.args.get("environment", "dev")
-    environment_config = ApplicationEnvironment.query.filter_by(
-        application_id=app.id, environment_name=environment
-    ).first()
-    namespace = environment_config.namespace if environment_config else app.namespace
-    data = KubernetesService().get_application_status(app.name, namespace)
-    if environment_config:
-        environment_config.status = data["status"]
-        db.session.commit()
-    data["environment"] = environment
-    data["namespace"] = namespace
+    environment_name = request.args.get("environment", "dev")
+    context = DeliveryContextService().resolve(
+        app.project, app, environment_name
+    )
+    data = ApplicationRuntimeService().status(context)
+    context.environment.status = data["status"]
+    db.session.commit()
+    data["environment"] = environment_name
+    data["namespace"] = context.namespace
     return success(data)
 
 
 @bp.get("/<int:app_id>/runtime/pods/<pod_name>/logs")
 def pod_logs(project_id, app_id, pod_name):
     app = get_application(project_id, app_id)
-    environment = request.args.get("environment", "dev")
-    env = ApplicationEnvironment.query.filter_by(
-        application_id=app.id, environment_name=environment
-    ).first()
-    namespace = env.namespace if env else app.namespace
-    logs = KubernetesService().get_pod_logs(
-        pod_name, namespace, request.args.get("container"), request.args.get("tail", 500, type=int)
+    environment_name = request.args.get("environment", "dev")
+    context = DeliveryContextService().resolve(
+        app.project, app, environment_name
     )
-    return success({"pod": pod_name, "namespace": namespace, "logs": logs})
+    logs = ApplicationRuntimeService().pod_logs(
+        context,
+        pod_name,
+        request.args.get("container"),
+        request.args.get("tail", 500, type=int),
+    )
+    return success({
+        "pod": pod_name,
+        "namespace": context.namespace,
+        "logs": logs,
+    })
 
 
 @bp.get("/<int:app_id>/runtime/pods/<pod_name>/yaml")
 def pod_yaml(project_id, app_id, pod_name):
     app = get_application(project_id, app_id)
-    environment = request.args.get("environment", "dev")
-    env = ApplicationEnvironment.query.filter_by(
-        application_id=app.id, environment_name=environment
-    ).first()
-    namespace = env.namespace if env else app.namespace
-    return success(KubernetesService().get_pod_manifest(pod_name, namespace))
+    environment_name = request.args.get("environment", "dev")
+    context = DeliveryContextService().resolve(
+        app.project, app, environment_name
+    )
+    return success(ApplicationRuntimeService().pod_manifest(context, pod_name))

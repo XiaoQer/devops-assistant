@@ -218,11 +218,36 @@ class KubernetesClusterServiceTest(unittest.TestCase):
         self.assertEqual(cluster.connection_status, "failed")
         self.assertIsNone(cluster.kubernetes_version)
 
+    @patch.object(KubernetesService, "from_kubeconfig")
+    def test_builds_target_client_from_decrypted_document(self, from_kubeconfig):
+        cluster = self.service.create(self.project, self.payload())
+        target = Mock()
+        from_kubeconfig.return_value = target
+
+        result = self.service.client(cluster)
+
+        self.assertIs(result, target)
+        document, context = from_kubeconfig.call_args.args
+        self.assertEqual(document["current-context"], "dev")
+        self.assertEqual(context, "dev")
+
 
 class KubernetesServiceKubeconfigTest(unittest.TestCase):
     @patch("app.services.kubernetes_service.client.VersionApi")
+    @patch("app.services.kubernetes_service.client.CustomObjectsApi")
+    @patch("app.services.kubernetes_service.client.NetworkingV1Api")
+    @patch("app.services.kubernetes_service.client.AppsV1Api")
+    @patch("app.services.kubernetes_service.client.CoreV1Api")
     @patch("app.services.kubernetes_service.config.load_kube_config_from_dict")
-    def test_builds_isolated_client_and_reads_version(self, load_config, version_api):
+    def test_builds_complete_isolated_client(
+        self,
+        load_config,
+        core_api,
+        apps_api,
+        networking_api,
+        custom_api,
+        version_api,
+    ):
         version_api.return_value.get_code.return_value = SimpleNamespace(git_version="v1.31.2")
         document = {"apiVersion": "v1"}
 
@@ -233,6 +258,11 @@ class KubernetesServiceKubeconfigTest(unittest.TestCase):
         load_config.assert_called_once()
         self.assertEqual(load_config.call_args.kwargs["context"], "dev")
         self.assertFalse(load_config.call_args.kwargs["persist_config"])
+        self.assertIs(service.core_api, core_api.return_value)
+        self.assertIs(service.apps_api, apps_api.return_value)
+        self.assertIs(service.networking_api, networking_api.return_value)
+        self.assertIs(service.custom_api, custom_api.return_value)
+        self.assertIs(service.version_api, version_api.return_value)
         version_api.return_value.get_code.assert_called_once_with(_request_timeout=5)
         self.assertEqual(result, {
             "server": "https://kubernetes.example.test",

@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from app import create_app
 from app.extensions import db
@@ -13,6 +14,7 @@ from app.models import (
     Project,
 )
 from app.services.cicd_workbench_service import CicdWorkbenchService
+from app.services.delivery_reconciler import DeliveryReconciler
 
 
 class TestConfig:
@@ -172,6 +174,40 @@ class CicdWorkbenchServiceTest(unittest.TestCase):
         items = CicdWorkbenchService().list_applications(self.project.id)
 
         self.assertNotIn("foreign", [item["application"]["name"] for item in items])
+
+    def test_reconcile_project_only_advances_active_batches_in_project(self):
+        foreign_id = self.foreign.id
+        older_id = self.older.id
+        foreign_build_id = self.foreign.build_versions[0].id
+        older_build_id = self.older_build.id
+        active_batch_id = self.recent.release_batches[0].id
+        foreign_batch = ApplicationReleaseBatch(
+            application_id=foreign_id,
+            project_id=self.other_project.id,
+            build_version_id=foreign_build_id,
+            branch="main",
+            git_commit="foreign1",
+            status="Building",
+            created_by="admin",
+        )
+        completed = ApplicationReleaseBatch(
+            application_id=older_id,
+            project_id=self.project.id,
+            build_version_id=older_build_id,
+            branch="main",
+            git_commit="old123",
+            status="Succeeded",
+            created_by="admin",
+        )
+        db.session.add_all([foreign_batch, completed])
+        db.session.commit()
+        reconciler = DeliveryReconciler()
+
+        with patch.object(reconciler, "reconcile_batch") as reconcile_batch:
+            count = reconciler.reconcile_project(self.project.id)
+
+        self.assertEqual(count, 1)
+        reconcile_batch.assert_called_once_with(active_batch_id)
 
 
 if __name__ == "__main__":

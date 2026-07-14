@@ -211,8 +211,11 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
             "APPROVAL_NOT_FOUND",
         )
 
+    @patch("app.routes.pipelines.DeliveryReconciler")
     @patch("app.routes.pipelines.CicdWorkbenchService")
-    def test_cicd_workbench_is_project_scoped_and_forwards_filters(self, workbench):
+    def test_cicd_workbench_is_project_scoped_and_forwards_filters(
+        self, workbench, reconciler
+    ):
         workbench.return_value.list_applications.return_value = [{
             "application": {"id": self.application.id, "name": "payments"},
             "activity_status": "Running",
@@ -233,6 +236,9 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
             self.project_a.id,
             query="pay",
             status="Running",
+        )
+        reconciler.return_value.reconcile_project.assert_called_once_with(
+            self.project_a.id
         )
 
     @patch("app.routes.pipelines.CicdWorkbenchService")

@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import current_app
 
 from app.extensions import db
-from app.models import ApplicationReleaseBatch
+from app.models import Application, ApplicationReleaseBatch
 from app.services.approval_service import ApprovalService
 from app.services.application_service import ApplicationService
 from app.services.tekton_service import TektonService
@@ -80,6 +80,24 @@ class DeliveryReconciler:
         batches = ApplicationReleaseBatch.query.filter(
             ApplicationReleaseBatch.status.in_(["Building", "Deploying", "PartialFailed"])
         ).all()
+        for batch in batches:
+            self.reconcile_batch(batch.id)
+        return len(batches)
+
+    def reconcile_project(self, project_id):
+        batches = (
+            ApplicationReleaseBatch.query.join(Application)
+            .filter(
+                ApplicationReleaseBatch.project_id == project_id,
+                Application.project_id == project_id,
+                ApplicationReleaseBatch.status.in_([
+                    "Building",
+                    "Deploying",
+                    "PartialFailed",
+                ]),
+            )
+            .all()
+        )
         for batch in batches:
             self.reconcile_batch(batch.id)
         return len(batches)

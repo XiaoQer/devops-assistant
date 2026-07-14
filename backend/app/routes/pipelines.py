@@ -79,6 +79,7 @@ def list_pipelines(project_id):
 @bp.get("/workbench")
 def workbench(project_id):
     ProjectService().get(project_id)
+    DeliveryReconciler().reconcile_project(project_id)
     return success({
         "items": CicdWorkbenchService().list_applications(
             project_id,

@@ -1,22 +1,21 @@
 <template>
   <div class="page-content page-stack">
     <PageHeader
-      eyebrow="Project delivery"
       title="CI/CD 工作台"
       description="跨 Application 快速构建、发布和跟踪交付状态。"
     >
-      <el-button :loading="loading" @click="loadAll">刷新</el-button>
+      <el-button :loading="loadingWorkbench" @click="loadWorkbench">刷新</el-button>
       <el-button type="primary" @click="openApplicationPicker">＋ 快速构建</el-button>
     </PageHeader>
 
-    <section class="surface toolbar-card">
+    <section class="surface application-section">
       <div class="toolbar">
         <el-input
           v-model="query"
           placeholder="搜索 Application 或仓库…"
           clearable
         />
-        <el-select v-model="status" style="width: 160px">
+        <el-select v-model="status" placeholder="全部状态" style="width: 150px">
           <el-option label="全部状态" value="" />
           <el-option v-for="item in statuses" :key="item" :label="item" :value="item" />
         </el-select>
@@ -24,16 +23,6 @@
         <span v-if="counts.running">{{ counts.running }} 个进行中</span>
         <span v-if="counts.failed" class="failed-count">{{ counts.failed }} 个失败</span>
       </div>
-    </section>
-
-    <section class="surface application-section">
-      <div class="surface-header">
-        <div>
-          <h3>Application delivery</h3>
-          <p>默认按最近活动排序；每张卡片都提供当前最有价值的下一步动作。</p>
-        </div>
-      </div>
-
       <el-skeleton :loading="loadingWorkbench" animated :rows="8">
         <div v-if="workbenchItems.length" class="application-grid">
           <article v-for="item in workbenchItems" :key="item.application.id" class="application-card">
@@ -78,13 +67,18 @@
               >
                 查看进度
               </el-button>
-              <el-button
-                v-else
-                type="primary"
-                @click="openBuild(item)"
-              >
-                构建
-              </el-button>
+              <template v-else>
+                <el-tooltip content="构建" placement="top">
+                  <el-button
+                    class="compact-action"
+                    type="primary"
+                    circle
+                    aria-label="构建"
+                    :icon="Tools"
+                    @click="openBuild(item)"
+                  />
+                </el-tooltip>
+              </template>
               <el-button
                 v-if="canPromote(item)"
                 @click="openPromote(item)"
@@ -97,7 +91,15 @@
               >
                 重试
               </el-button>
-              <el-button text @click="openApplication(item)">详情</el-button>
+              <el-tooltip content="查看 Application 详情" placement="top">
+                <el-button
+                  class="compact-action"
+                  circle
+                  aria-label="查看 Application 详情"
+                  :icon="View"
+                  @click="openApplication(item)"
+                />
+              </el-tooltip>
             </div>
           </article>
         </div>
@@ -107,42 +109,6 @@
           description="调整搜索或状态筛选，或者先在当前 Project 中创建 Application。"
         />
       </el-skeleton>
-    </section>
-
-    <section class="surface recent-section">
-      <div class="surface-header">
-        <div>
-          <h3>最近执行</h3>
-          <p>查看 Project 内最近的 PipelineRun，并进入任务日志排障。</p>
-        </div>
-      </div>
-      <el-skeleton :loading="loadingRuns" animated :rows="6">
-        <div v-if="runs.length" class="run-list">
-          <article v-for="row in runs" :key="row.name" class="run-item" @click="openRun(row.name)">
-            <div class="run-main">
-              <div>
-                <h4>{{ row.application || 'Unknown application' }}</h4>
-                <p>{{ row.name }}</p>
-              </div>
-              <StatusBadge :status="row.status" />
-            </div>
-            <div class="run-meta">
-              <span>{{ row.branch || 'No branch' }}</span>
-              <span>{{ duration(row) }}</span>
-              <span>{{ format(row.started_at || row.created_at) }}</span>
-            </div>
-          </article>
-        </div>
-        <EmptyState v-else title="没有 PipelineRun" description="从上方 Application 卡片发起第一次构建。" />
-      </el-skeleton>
-      <footer v-if="runTotal > pageSize" class="pager">
-        <el-pagination
-          v-model:current-page="page"
-          :page-size="pageSize"
-          layout="prev,pager,next"
-          :total="runTotal"
-        />
-      </footer>
     </section>
 
     <el-dialog v-model="applicationPicker" title="选择要构建的 Application" width="460px">
@@ -192,26 +158,22 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Tools, View } from '@element-plus/icons-vue'
 import { pipelineApi } from '../api/pipeline'
 import PageHeader from '../components/common/PageHeader.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 import QuickBuildDrawer from '../components/pipeline/QuickBuildDrawer.vue'
 import PromoteBuildDrawer from '../components/pipeline/PromoteBuildDrawer.vue'
-import type { CicdWorkbenchItem, PipelineRunSummary } from '../types'
+import type { CicdWorkbenchItem } from '../types'
 
 const route = useRoute()
 const router = useRouter()
 const projectId = Number(route.params.projectId)
 const workbenchItems = ref<CicdWorkbenchItem[]>([])
-const runs = ref<PipelineRunSummary[]>([])
-const runTotal = ref(0)
-const page = ref(1)
-const pageSize = 20
 const status = ref('')
 const query = ref('')
 const loadingWorkbench = ref(false)
-const loadingRuns = ref(false)
 const buildDrawer = ref(false)
 const promoteDrawer = ref(false)
 const applicationPicker = ref(false)
@@ -219,7 +181,6 @@ const pickedApplicationId = ref<number>()
 const selectedItem = ref<CicdWorkbenchItem>()
 const promoteItem = ref<CicdWorkbenchItem>()
 const statuses = ['Succeeded', 'Running', 'Pending', 'WaitingApproval', 'Failed', 'BuildFailed']
-const loading = computed(() => loadingWorkbench.value || loadingRuns.value)
 const counts = computed(() => ({
   running: workbenchItems.value.filter(item => ['Running', 'Pending', 'Building', 'Deploying', 'WaitingApproval'].includes(item.activity_status)).length,
   failed: workbenchItems.value.filter(item => ['Failed', 'BuildFailed', 'PartialFailed'].includes(item.activity_status)).length,
@@ -238,28 +199,6 @@ async function loadWorkbench() {
   } finally {
     loadingWorkbench.value = false
   }
-}
-
-async function loadRuns() {
-  loadingRuns.value = true
-  try {
-    const data = await pipelineApi.list(projectId, {
-      page: page.value,
-      pageSize,
-      status: status.value || undefined,
-      query: query.value || undefined,
-    })
-    runs.value = data.items
-    runTotal.value = data.total
-  } catch (error) {
-    ElMessage.error((error as Error).message)
-  } finally {
-    loadingRuns.value = false
-  }
-}
-
-function loadAll() {
-  return Promise.all([loadWorkbench(), loadRuns()])
 }
 
 function openBuild(item: CicdWorkbenchItem) {
@@ -285,7 +224,7 @@ function confirmApplicationPicker() {
 }
 
 function handleSubmitted() {
-  void loadAll()
+  void loadWorkbench()
 }
 
 function openApplication(item: CicdWorkbenchItem) {
@@ -307,7 +246,7 @@ async function retry(item: CicdWorkbenchItem) {
   try {
     await pipelineApi.retry(projectId, name)
     ElMessage.success('PipelineRun 重试已提交')
-    await loadAll()
+    await loadWorkbench()
   } catch (error) {
     ElMessage.error((error as Error).message)
   }
@@ -352,10 +291,6 @@ function shortSha(value?: string) {
   return value ? value.slice(0, 8) : 'No commit'
 }
 
-function format(value?: string) {
-  return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
-}
-
 function formatRelative(value?: string) {
   if (!value) return '尚无活动'
   const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000))
@@ -365,27 +300,19 @@ function formatRelative(value?: string) {
   return `${Math.floor(seconds / 86400)} 天前`
 }
 
-function duration(run: PipelineRunSummary) {
-  if (run.started_at && run.finished_at) {
-    return `${Math.max(0, Math.round((new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()) / 1000))}s`
-  }
-  return run.status === 'Running' ? 'Running' : '—'
-}
-
 let searchTimer: number
 let refreshTimer: number
-watch([page, status], () => void loadAll())
+watch(status, () => void loadWorkbench())
 watch(query, () => {
   window.clearTimeout(searchTimer)
   searchTimer = window.setTimeout(() => {
-    page.value = 1
-    void loadAll()
+    void loadWorkbench()
   }, 300)
 })
 
 onMounted(() => {
-  void loadAll()
-  refreshTimer = window.setInterval(() => void loadAll(), 15000)
+  void loadWorkbench()
+  refreshTimer = window.setInterval(() => void loadWorkbench(), 15000)
 })
 onBeforeUnmount(() => {
   window.clearTimeout(searchTimer)
@@ -394,9 +321,24 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.toolbar-card {
-  padding: 16px 20px;
-  box-shadow: none;
+.page-content {
+  gap: 12px;
+}
+
+.page-content :deep(.page-header) {
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.page-content :deep(.page-header h1) {
+  font-size: 27px;
+  letter-spacing: -0.035em;
+}
+
+.page-content :deep(.page-header p) {
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .toolbar {
@@ -404,6 +346,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .toolbar :deep(.el-input) {
@@ -419,52 +363,48 @@ onBeforeUnmount(() => {
   color: var(--danger, #c2413b);
 }
 
-.application-section,
-.recent-section {
+.application-section {
+  overflow: hidden;
   box-shadow: none;
 }
 
 .application-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  padding: 10px 24px 24px;
+  align-items: start;
+  gap: 10px;
+  padding: 12px 16px 16px;
 }
 
 .application-card {
   min-width: 0;
-  padding: 18px;
+  padding: 14px;
   border: 1px solid var(--border-soft);
   border-radius: 16px;
   background: var(--surface-soft);
 }
 
 .card-head,
-.run-main,
 .card-actions,
 .build-meta,
-.delivery-flow,
-.run-meta {
+.delivery-flow {
   display: flex;
   align-items: center;
   gap: 9px;
   flex-wrap: wrap;
 }
 
-.card-head,
-.run-main {
+.card-head {
   justify-content: space-between;
   align-items: flex-start;
 }
 
-.card-head h4,
-.run-main h4 {
+.card-head h4 {
   margin: 0;
   font-size: 17px;
 }
 
 .card-head p,
-.run-main p,
 .commit-message {
   margin: 5px 0 0;
   color: var(--muted);
@@ -473,11 +413,10 @@ onBeforeUnmount(() => {
 }
 
 .build-meta {
-  margin: 15px 0 10px;
+  margin: 11px 0 8px;
 }
 
 .build-meta span,
-.run-meta span,
 .stage {
   padding: 5px 8px;
   border-radius: 999px;
@@ -487,8 +426,7 @@ onBeforeUnmount(() => {
 }
 
 .delivery-flow {
-  min-height: 30px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .flow-arrow {
@@ -522,7 +460,6 @@ onBeforeUnmount(() => {
 }
 
 .commit-message {
-  min-height: 34px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -530,33 +467,27 @@ onBeforeUnmount(() => {
 }
 
 .card-actions {
-  margin-top: 16px;
+  margin-top: 10px;
 }
 
-.run-list {
-  padding: 8px 24px 24px;
-  display: grid;
-  gap: 10px;
-}
-
-.run-item {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border-soft);
-  cursor: pointer;
-}
-
-.run-meta {
-  margin-top: 9px;
-}
-
-.pager {
-  padding: 0 24px 24px;
-  display: flex;
-  justify-content: flex-end;
+.compact-action.el-button {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  border-radius: 50%;
 }
 
 .full-width {
   width: 100%;
+}
+
+@media (min-width: 1500px) {
+  .application-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1100px) {
@@ -566,6 +497,10 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 700px) {
+  .page-content :deep(.page-header) {
+    align-items: flex-start;
+  }
+
   .application-grid {
     grid-template-columns: 1fr;
   }

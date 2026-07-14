@@ -1,5 +1,5 @@
 <template>
-  <div class="overview-grid">
+  <div class="overview-stack">
     <section class="surface info-card">
       <div class="surface-header">
         <div>
@@ -7,7 +7,7 @@
           <p>面向交付决策的基础信息摘要</p>
         </div>
       </div>
-      <dl>
+      <dl class="info-grid">
         <div>
           <dt>Language</dt>
           <dd>{{ application.language }}</dd>
@@ -35,16 +35,13 @@
       </dl>
     </section>
 
-    <section class="surface spec-card">
-      <div class="surface-header">
-        <div>
-          <h3>Application spec</h3>
-          <p>平台生成的声明式应用定义</p>
-        </div>
-        <el-button link type="primary" @click="copy">复制</el-button>
-      </div>
-      <pre class="code-block spec-block">{{ spec }}</pre>
-    </section>
+    <el-collapse class="spec-collapse">
+      <el-collapse-item name="spec">
+        <template #title><span class="spec-title">Application Spec</span><span class="spec-hint">声明式定义 · 开发诊断</span></template>
+        <div class="spec-toolbar"><span>平台生成的应用定义，可用于排查构建和部署参数。</span><el-button link type="primary" @click="copy">复制</el-button></div>
+        <pre class="code-block spec-block">{{ spec }}</pre>
+      </el-collapse-item>
+    </el-collapse>
   </div>
 </template>
 
@@ -64,28 +61,27 @@ function copy() {
 </script>
 
 <style scoped>
-.overview-grid {
+.overview-stack {
   display: grid;
-  grid-template-columns: 0.9fr 1.1fr;
-  gap: 16px;
+  gap: 12px;
 }
 
 .info-card,
-.spec-card {
+.spec-collapse {
   overflow: hidden;
   box-shadow: none;
 }
 
 .info-card dl {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
   margin: 0;
-  padding: 8px 24px 24px;
+  padding: 4px 24px 18px;
 }
 
 .info-card dl div {
-  padding: 16px 0;
+  padding: 12px 18px 12px 0;
   border-bottom: 1px solid var(--border-soft);
 }
 
@@ -96,21 +92,47 @@ dt {
 }
 
 .dd,
- dd {
+dd {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-2);
   font-weight: 600;
   word-break: break-word;
 }
 
+.spec-collapse :deep(.el-collapse-item__header) {
+  padding: 0 20px;
+  color: var(--text-2);
+  font-weight: 700;
+}
+
+.spec-title {
+  margin-right: 12px;
+}
+
+.spec-hint {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.spec-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .spec-block {
-  margin: 0 24px 24px;
-  min-height: 360px;
+  margin: 0 20px 18px;
+  max-height: 300px;
+  overflow: auto;
 }
 
 @media (max-width: 1000px) {
-  .overview-grid,
   .info-card dl {
     grid-template-columns: 1fr;
   }

@@ -1,5 +1,22 @@
 <template>
   <div v-if="status" class="runtime page-stack">
+    <section class="surface runtime-overview">
+      <div class="runtime-overview-head">
+        <div>
+          <span class="runtime-kicker">KUBERNETES RUNTIME</span>
+          <h3>{{ status.deployment.name }}</h3>
+          <p>{{ status.environment.toUpperCase() }} · {{ status.namespace }}</p>
+        </div>
+        <StatusBadge :status="status.status" />
+      </div>
+      <div class="runtime-metrics">
+        <div><span>Ready replicas</span><strong>{{ status.deployment.ready_replicas }} / {{ status.deployment.replicas }}</strong></div>
+        <div><span>Pods</span><strong>{{ status.pods.length }}</strong></div>
+        <div><span>Restarts</span><strong :class="{ warning: restartCount > 0 }">{{ restartCount }}</strong></div>
+        <div><span>Events</span><strong :class="{ danger: warningEventCount > 0 }">{{ warningEventCount || '—' }}</strong></div>
+      </div>
+    </section>
+
     <div class="runtime-cards">
       <section class="surface deployment-card">
         <div class="surface-header">
@@ -17,7 +34,7 @@
           <div class="bars">
             <i v-for="n in Math.max(status.deployment.replicas, 1)" :key="n" :class="{ ready: n <= status.deployment.ready_replicas }" />
           </div>
-          <pre class="code-block inline-code">{{ status.deployment.images?.[0] || 'No image deployed' }}</pre>
+          <div class="image-line"><span>Image</span><code>{{ status.deployment.images?.[0] || 'No image deployed' }}</code></div>
         </div>
       </section>
 
@@ -40,6 +57,10 @@
             <small>{{ status.ingress?.address || '—' }}</small>
           </div>
         </dl>
+        <div class="network-links">
+          <span v-if="status.ingress?.host" class="soft-pill">{{ status.ingress.host }}</span>
+          <span v-if="status.service?.cluster_ip" class="soft-pill">{{ status.service.cluster_ip }}</span>
+        </div>
       </section>
     </div>
 
@@ -86,7 +107,7 @@
         </div>
       </div>
       <div v-if="status.events.length" class="event-list">
-        <article v-for="(event, index) in status.events" :key="index" class="event-item">
+        <article v-for="(event, index) in status.events" :key="index" class="event-item" :class="{ warning: event.type === 'Warning' }">
           <StatusBadge :status="event.type === 'Warning' ? 'Failed' : 'Succeeded'" :label="event.type" />
           <div>
             <b>{{ event.reason }}</b>
@@ -107,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { defineComponent, h, ref } from 'vue'
+import { computed, defineComponent, h, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { RuntimeStatus } from '../../types'
 import { applicationApi } from '../../api/application'
@@ -120,6 +141,8 @@ const drawerMode = ref('logs')
 const selectedPod = ref('')
 const podContent = ref('')
 const loadingPod = ref('')
+const restartCount = computed(() => props.status?.pods.reduce((total, pod) => total + (pod.restart_count || 0), 0) || 0)
+const warningEventCount = computed(() => props.status?.events.filter(event => event.type === 'Warning').length || 0)
 
 const ResourceList = defineComponent({
   props: {
@@ -131,9 +154,12 @@ const ResourceList = defineComponent({
     return () => h('section', { class: 'surface inventory' }, [
       h('div', { class: 'inventory-title' }, [h('h3', componentProps.title), h('span', String(componentProps.items.length))]),
       componentProps.items.length
-        ? h('div', { class: 'inventory-items' }, componentProps.items.slice(0, 8).map((item: any) => h('article', [
-            h('b', item.name || 'resource'),
-            h('small', item.status || item.type || item.storage_class || 'Managed by Kubernetes'),
+        ? h('div', { class: 'inventory-items' }, componentProps.items.slice(0, 8).map((item: any) => h('article', { class: 'inventory-item' }, [
+            h('span', { class: 'inventory-item-icon' }, '◦'),
+            h('div', { class: 'inventory-item-main' }, [
+              h('b', item.name || 'resource'),
+              h('small', item.status || item.type || item.storage_class || 'Managed by Kubernetes'),
+            ]),
           ])))
         : h('p', { class: 'inventory-empty' }, componentProps.empty),
     ])
@@ -174,6 +200,84 @@ function copyContent() {
   gap: 16px;
 }
 
+.runtime-overview,
+.deployment-card,
+.network-card,
+.list-card,
+.inventory,
+.events-card {
+  box-shadow: none;
+}
+
+.runtime-overview {
+  padding: 20px 24px;
+  background: linear-gradient(135deg, var(--primary-soft), transparent 50%), var(--theme-panel);
+}
+
+.runtime-overview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.runtime-kicker {
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .14em;
+}
+
+.runtime-overview h3 {
+  margin: 6px 0 3px;
+  color: var(--text-2);
+  font-size: 20px;
+}
+
+.runtime-overview p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.runtime-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.runtime-metrics div {
+  padding: 11px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .58);
+}
+
+.runtime-metrics span,
+.runtime-metrics strong {
+  display: block;
+}
+
+.runtime-metrics span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.runtime-metrics strong {
+  margin-top: 5px;
+  color: var(--text-2);
+  font-size: 18px;
+}
+
+.runtime-metrics strong.warning {
+  color: var(--warning);
+}
+
+.runtime-metrics strong.danger {
+  color: var(--danger);
+}
+
 .deployment-card,
 .network-card,
 .list-card,
@@ -183,7 +287,7 @@ function copyContent() {
 }
 
 .deploy-body {
-  padding: 24px;
+  padding: 18px 24px 22px;
 }
 
 .replicas strong {
@@ -214,8 +318,28 @@ function copyContent() {
   background: var(--success);
 }
 
-.inline-code {
-  margin: 0;
+.image-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 18px;
+  min-width: 0;
+}
+
+.image-line span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.image-line code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .network-card dl {
@@ -241,6 +365,13 @@ function copyContent() {
 
 .network-card small {
   color: var(--muted);
+}
+
+.network-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 24px 20px;
 }
 
 .list-card,
@@ -295,11 +426,12 @@ function copyContent() {
   gap: 12px;
 }
 
-.inventory {
+:deep(.inventory) {
   overflow: hidden;
+  min-height: 190px;
 }
 
-.inventory-title {
+:deep(.inventory-title) {
   height: 54px;
   padding: 0 16px;
   display: flex;
@@ -308,36 +440,75 @@ function copyContent() {
   border-bottom: 1px solid var(--border-soft);
 }
 
-.inventory-title h3 {
+:deep(.inventory-title h3) {
   margin: 0;
   font-size: 14px;
 }
 
-.inventory-title span {
+:deep(.inventory-title span) {
+  min-width: 24px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--surface-soft);
   color: var(--muted);
   font-size: 12px;
+  text-align: center;
 }
 
-.inventory-items article {
-  padding: 12px 16px;
+:deep(.inventory-items) {
+  padding: 5px 0;
+}
+
+:deep(.inventory-item) {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 9px 16px;
   border-bottom: 1px solid var(--border-soft);
 }
 
-.inventory-items b,
-.inventory-items small {
+:deep(.inventory-item:last-child) {
+  border-bottom: 0;
+}
+
+:deep(.inventory-item-icon) {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 15px;
+}
+
+:deep(.inventory-item-main) {
+  min-width: 0;
+}
+
+:deep(.inventory-item-main b),
+:deep(.inventory-item-main small) {
   display: block;
 }
 
-.inventory-items b {
-  font-size: 13px;
+:deep(.inventory-item-main b) {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.inventory-items small {
-  margin-top: 6px;
+:deep(.inventory-item-main small) {
+  margin-top: 3px;
   color: var(--muted);
+  font-size: 11px;
 }
 
-.inventory-empty {
+:deep(.inventory-empty) {
   padding: 18px 16px;
   margin: 0;
   color: var(--muted);
@@ -377,6 +548,11 @@ function copyContent() {
   color: var(--muted);
 }
 
+.event-item.warning {
+  border-color: rgba(217, 119, 6, .24);
+  background: rgba(217, 119, 6, .07);
+}
+
 .drawer-tools {
   display: flex;
   justify-content: flex-end;
@@ -394,6 +570,28 @@ function copyContent() {
   .pod-card,
   .event-item {
     grid-template-columns: 1fr;
+  }
+
+  .runtime-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .runtime-overview {
+    padding: 18px;
+  }
+
+  .runtime-overview-head {
+    flex-direction: column;
+  }
+
+  .runtime-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .runtime-metrics strong {
+    font-size: 16px;
   }
 }
 </style>

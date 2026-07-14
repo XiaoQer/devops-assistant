@@ -2,7 +2,13 @@
   <div class="page-content page-stack">
     <el-skeleton v-if="loadingApp" animated :rows="9" />
     <template v-else-if="app">
-      <PageHeader eyebrow="Application workspace" :title="app.name" :description="`${shortRepo(app.repo_url)} · ${app.branch}`">
+      <DetailBreadcrumb :items="[
+        { label: 'DevCenter', to: '/devcenter/projects' },
+        { label: app.project_name || `Project ${projectId}`, to: `/devcenter/projects/${projectId}` },
+        { label: 'Applications', to: `/devcenter/projects/${projectId}/applications` },
+        { label: app.name, current: true },
+      ]" />
+      <PageHeader eyebrow="Application / Release" :title="app.name" :description="`${shortRepo(app.repo_url)} · ${app.branch}`">
         <el-select v-model="environment" style="width: 132px">
           <el-option v-for="env in environmentOptions" :key="env" :label="env.toUpperCase()" :value="env" />
         </el-select>
@@ -10,43 +16,19 @@
         <el-button type="primary" :loading="deploying" @click="openDeployPlan">发布应用</el-button>
       </PageHeader>
 
-      <section class="surface hero-card glass-card">
-        <div class="hero-main">
+      <section class="surface application-summary">
+        <div class="summary-identity">
           <div class="app-avatar">{{ app.name[0].toUpperCase() }}</div>
           <div>
-            <div class="hero-pills">
-              <StatusBadge :status="runtime?.status || 'Unknown'" />
-              <span class="soft-pill">{{ environment.toUpperCase() }}</span>
-              <span class="soft-pill">{{ app.language }}</span>
-              <span class="soft-pill">{{ app.framework }}</span>
-            </div>
-            <h2>{{ app.name }} 正在作为一个可交付的软件工作区运行</h2>
-            <p>优先展示现在最需要关心的环境、健康度、镜像与发布动作，而不是一上来就让你面对大量配置项。</p>
+            <div class="summary-pills"><StatusBadge :status="runtime?.status || 'Unknown'" /><span class="soft-pill">{{ environment.toUpperCase() }}</span></div>
+            <strong>{{ app.name }}</strong>
+            <span>{{ app.language }} · {{ app.framework }} · {{ app.build_type }}</span>
           </div>
         </div>
-        <div class="hero-side">
-          <div>
-            <label>Current image</label>
-            <b>{{ runtime?.deployment.images?.[0] || `${app.image_name}:${app.image_tag}` }}</b>
-          </div>
-          <div>
-            <label>Replicas</label>
-            <b>{{ runtime?.deployment.ready_replicas ?? '—' }} / {{ runtime?.deployment.replicas ?? '—' }}</b>
-          </div>
-          <div>
-            <label>Latest execution</label>
-            <b>{{ executions[0]?.pipeline_run_name || 'No runs yet' }}</b>
-          </div>
-        </div>
-      </section>
-
-      <section class="surface ai-panel">
-        <span>✦</span>
-        <div>
-          <h3>Ask Aegis about this service</h3>
-          <p>下一步可接入真正的应用级 AI：分析失败原因、建议环境配置、生成回滚方案、解释运行异常。</p>
-        </div>
-        <el-button disabled>Analyze this application</el-button>
+        <div class="summary-stat"><span>Target namespace</span><strong>{{ runtime?.namespace || currentEnvironment?.namespace || app.namespace }}</strong></div>
+        <div class="summary-stat"><span>Replicas</span><strong>{{ runtime ? `${runtime.deployment.ready_replicas} / ${runtime.deployment.replicas}` : '—' }}</strong></div>
+        <div class="summary-stat"><span>Current image</span><strong class="mono">{{ runtime?.deployment.images?.[0] || `${app.image_name || 'not-configured'}:${app.image_tag}` }}</strong></div>
+        <div class="summary-stat"><span>Cluster</span><strong>{{ currentEnvironment?.cluster_name || 'Not bound' }}</strong></div>
       </section>
 
       <el-dialog v-model="deployDialog" title="Deployment plan" width="780px">
@@ -128,13 +110,40 @@
       </el-dialog>
 
       <el-tabs v-model="activeTab" class="detail-tabs">
-        <el-tab-pane label="Overview" name="overview"><ApplicationOverview :application="app" /></el-tab-pane>
-        <el-tab-pane label="Environments" name="environments"><EnvironmentCenter :application-id="app.id" :project-id="app.project_id || 0" /></el-tab-pane>
-        <el-tab-pane label="Pipeline" name="pipeline"><section class="surface tab-card"><div class="surface-header"><div><h3>Pipeline executions</h3><p>最近 Tekton PipelineRun</p></div></div><el-table :data="executions"><el-table-column prop="pipeline_run_name" label="PipelineRun" min-width="280" /><el-table-column label="状态" width="130"><template #default="{row}"><StatusBadge :status="row.status" /></template></el-table-column><el-table-column label="创建时间" width="180"><template #default="{row}">{{ format(row.created_at) }}</template></el-table-column><el-table-column label="操作" width="100"><template #default="{row}"><el-button link @click="$router.push(`/devcenter/projects/${projectId}/pipelines/${row.pipeline_run_name}`)">详情</el-button></template></el-table-column></el-table><EmptyState v-if="!executions.length" title="暂无 Pipeline 执行" description="点击发布应用以启动第一条流水线。" /></section></el-tab-pane>
-        <el-tab-pane label="Release History" name="releases"><ReleaseHistoryTable :releases="releases" :rollback-id="rollbackId" @logs="openLogs" @rollback="rollback" /></el-tab-pane>
-        <el-tab-pane label="Runtime Status" name="runtime"><el-skeleton :loading="loadingRuntime" animated :rows="8"><RuntimeStatusPanel :status="runtime" :application-id="app.id" :project-id="projectId" :environment="environment" /></el-skeleton></el-tab-pane>
-        <el-tab-pane label="Config" name="config"><ConfigurationCenter :application-id="app.id" :project-id="projectId" /></el-tab-pane>
-        <el-tab-pane label="Logs" name="logs"><EmptyState title="选择 Pipeline 查看日志" description="在 Pipeline 标签页中选择一次执行，查看 Task 与 Step 日志。" icon="≡" /></el-tab-pane>
+        <el-tab-pane label="服务概览" name="overview"><ApplicationOverview :application="app" /></el-tab-pane>
+        <el-tab-pane :label="`环境 (${environmentRecords.length})`" name="environments"><EnvironmentCenter :application-id="app.id" :project-id="app.project_id || 0" /></el-tab-pane>
+        <el-tab-pane :label="`Pipeline (${executions.length})`" name="pipeline">
+          <section class="surface tab-card pipeline-panel">
+            <div class="surface-header">
+              <div>
+                <h3>构建与部署执行</h3>
+                <p>中央 Tekton PipelineRun 及其交付状态</p>
+              </div>
+              <el-button type="primary" @click="openDeployPlan">新建发布</el-button>
+            </div>
+            <div v-if="executions.length" class="pipeline-list">
+              <article v-for="(run, index) in executions" :key="run.pipeline_run_name" class="pipeline-item">
+                <div class="pipeline-index">{{ String(index + 1).padStart(2, '0') }}</div>
+                <div class="pipeline-main">
+                  <div class="pipeline-name-row">
+                    <strong>{{ run.pipeline_run_name }}</strong>
+                    <StatusBadge :status="run.status" />
+                  </div>
+                  <div class="pipeline-meta">
+                    <span>创建于 {{ format(run.created_at) }}</span>
+                    <span v-if="run.error_message">{{ run.error_message }}</span>
+                  </div>
+                </div>
+                <el-button class="pipeline-action" text @click="$router.push(`/devcenter/projects/${projectId}/pipelines/${run.pipeline_run_name}`)">查看详情 <span>→</span></el-button>
+              </article>
+            </div>
+            <EmptyState v-else title="暂无 Pipeline 执行" description="点击新建发布启动第一条流水线。" />
+          </section>
+        </el-tab-pane>
+        <el-tab-pane :label="`发布记录 (${releases.length})`" name="releases"><ReleaseHistoryTable :releases="releases" :rollback-id="rollbackId" @logs="openLogs" @rollback="rollback" /></el-tab-pane>
+        <el-tab-pane label="Kubernetes 资源" name="runtime"><el-skeleton :loading="loadingRuntime" animated :rows="8"><RuntimeStatusPanel :status="runtime" :application-id="app.id" :project-id="projectId" :environment="environment" /></el-skeleton></el-tab-pane>
+        <el-tab-pane label="配置与密钥" name="config"><ConfigurationCenter :application-id="app.id" :project-id="projectId" /></el-tab-pane>
+        <el-tab-pane label="操作日志" name="logs"><section class="surface tab-card"><div class="surface-header"><div><h3>交付操作日志</h3><p>从 Pipeline 和发布记录进入具体的构建、部署与回滚日志。</p></div></div><div class="log-guide"><div><span>01</span><strong>查看 Pipeline Step</strong><p>定位 clone、build、deploy 等任务的执行输出。</p></div><div><span>02</span><strong>检查 Kubernetes 事件</strong><p>在 Kubernetes 资源页查看 Pod、Service、Ingress 和事件。</p></div><div><span>03</span><strong>执行回滚</strong><p>从发布记录选择成功版本，恢复到稳定镜像。</p></div></div></section></el-tab-pane>
       </el-tabs>
     </template>
     <EmptyState v-else title="应用加载失败" description="请检查后端服务连接后重试。"><el-button @click="load">重新加载</el-button></EmptyState>
@@ -162,6 +171,7 @@ import ReleaseHistoryTable from '../components/application/ReleaseHistoryTable.v
 import RuntimeStatusPanel from '../components/application/RuntimeStatusPanel.vue'
 import EnvironmentCenter from '../components/application/EnvironmentCenter.vue'
 import ConfigurationCenter from '../components/application/ConfigurationCenter.vue'
+import DetailBreadcrumb from '../components/common/DetailBreadcrumb.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -182,6 +192,7 @@ const deployPlan = ref<DeploymentPlan>()
 const rollbackId = ref(0)
 const environmentOptions = computed(() => environmentRecords.value.map(item => item.environment_name))
 const projectId = computed(() => Number(route.params.projectId))
+const currentEnvironment = computed(() => environmentRecords.value.find(item => item.environment_name === environment.value))
 
 const shortRepo = (url: string) => url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '')
 const format = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false })
@@ -311,113 +322,204 @@ onMounted(load)
 </script>
 
 <style scoped>
-.hero-card,
-.ai-panel,
-.tab-card {
+.tab-card,
+.application-summary {
   box-shadow: none;
 }
 
-.hero-card {
-  padding: 24px;
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
-  gap: 24px;
+.page-content :deep(.page-header) {
+  margin-bottom: 14px;
 }
 
-.hero-main {
-  display: flex;
-  gap: 18px;
+.page-content :deep(.page-header h1) {
+  font-size: 28px;
 }
 
 .app-avatar {
-  width: 64px;
-  height: 64px;
-  border-radius: 20px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
   background: var(--primary-soft);
   color: var(--primary);
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 800;
   flex-shrink: 0;
 }
 
-.hero-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.hero-card h2 {
-  margin: 0 0 10px;
-  font-size: 34px;
-  line-height: 1.08;
-  letter-spacing: -0.05em;
-}
-
-.hero-card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.8;
-}
-
-.hero-side {
+.application-summary {
   display: grid;
-  gap: 14px;
+  grid-template-columns: minmax(260px, 1.5fr) repeat(4, minmax(120px, 1fr));
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
 }
 
-.hero-side > div {
-  padding: 16px;
-  border-radius: 14px;
-  border: 1px solid var(--border-soft);
-  background: var(--theme-panel);
+.summary-identity,
+.summary-pills {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.hero-side label,
-.hero-side b {
+.summary-identity > div:last-child > strong,
+.summary-identity > div:last-child > span {
   display: block;
 }
 
-.hero-side label {
+.summary-identity > div:last-child > strong {
+  margin-top: 6px;
+  font-size: 17px;
+}
+
+.summary-identity > div:last-child > span,
+.summary-stat span {
   color: var(--muted);
   font-size: 12px;
-  margin-bottom: 8px;
 }
 
-.hero-side b {
-  font-size: 14px;
-  line-height: 1.6;
-  word-break: break-word;
+.summary-stat {
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--border-soft);
 }
 
-.ai-panel {
-  padding: 20px 24px;
+.summary-stat strong {
+  display: block;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.pipeline-panel,
+.log-guide {
+  overflow: hidden;
+}
+
+.pipeline-list {
+  padding: 8px 18px 18px;
+}
+
+.pipeline-item {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-height: 76px;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  transition: background .16s ease, border-color .16s ease;
 }
 
-.ai-panel > span {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+.pipeline-item:last-child {
+  border-bottom: 0;
+}
+
+.pipeline-item:hover {
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.pipeline-index {
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
-  background: var(--primary);
-  color: white;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
 }
 
-.ai-panel h3 {
-  margin: 0 0 6px;
-  font-size: 18px;
+.pipeline-main {
+  min-width: 0;
+  flex: 1;
 }
 
-.ai-panel p {
-  margin: 0;
+.pipeline-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pipeline-name-row strong {
+  overflow: hidden;
+  color: var(--text-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pipeline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 7px;
   color: var(--muted);
-  line-height: 1.7;
+  font-size: 12px;
+}
+
+.pipeline-meta span + span {
+  padding-left: 12px;
+  border-left: 1px solid var(--border-soft);
+}
+
+.pipeline-action {
+  flex: 0 0 auto;
+  color: var(--primary) !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pipeline-action span {
+  margin-left: 4px;
+  font-size: 16px;
+}
+
+.log-guide {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 18px 24px 24px;
+}
+
+.log-guide > div {
+  padding: 18px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.log-guide span {
+  color: var(--primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.log-guide strong {
+  display: block;
+  margin-top: 12px;
+}
+
+.log-guide p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .deploy-plan-stack {
@@ -549,20 +651,81 @@ onMounted(load)
 }
 
 .detail-tabs :deep(.el-tabs__header) {
-  margin-bottom: 16px;
+  margin: 18px 0 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.detail-tabs :deep(.el-tabs__item) {
+  color: #64748b !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.detail-tabs :deep(.el-tabs__item:hover) {
+  color: #1d4ed8 !important;
+}
+
+.detail-tabs :deep(.el-tabs__item.is-active) {
+  color: #1d4ed8 !important;
+  font-weight: 700;
+}
+
+.detail-tabs :deep(.el-tabs__active-bar) {
+  background-color: #2563eb !important;
 }
 
 @media (max-width: 1100px) {
-  .hero-card {
+  .application-summary {
     grid-template-columns: 1fr;
   }
 
-  .hero-main {
-    flex-direction: column;
+  .summary-stat {
+    padding: 10px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border-soft);
   }
 
   .deploy-target-grid {
     grid-template-columns: 1fr;
+  }
+
+  .log-guide {
+    grid-template-columns: 1fr;
+  }
+
+  .pipeline-item {
+    align-items: flex-start;
+  }
+
+  .pipeline-action {
+    padding-top: 4px;
+  }
+}
+
+@media (max-width: 640px) {
+  .pipeline-item {
+    gap: 10px;
+    padding: 12px 4px;
+  }
+
+  .pipeline-index {
+    width: 28px;
+    height: 28px;
+  }
+
+  .pipeline-name-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .pipeline-action {
+    font-size: 0;
+  }
+
+  .pipeline-action span {
+    margin: 0;
+    font-size: 18px;
   }
 }
 </style>

@@ -1,5 +1,10 @@
 <template>
   <div class="page-content page-stack">
+    <DetailBreadcrumb :items="[
+      { label: 'DevCenter', to: '/devcenter/projects' },
+      { label: `${projectName || `Project ${projectId}`} · Pipelines`, to: `/devcenter/projects/${projectId}/pipelines` },
+      { label: name, current: true },
+    ]" />
     <PageHeader eyebrow="Pipeline run" :title="name" description="按执行链路、任务状态与日志上下文组织问题定位体验。">
       <el-button :loading="loading" @click="refresh">刷新</el-button>
       <el-button type="warning" :loading="retrying" :disabled="!canRetry" @click="retryRun">重试执行</el-button>
@@ -31,23 +36,15 @@
           </article>
         </section>
 
-        <section class="surface ai-callout">
-          <span>✦</span>
-          <div>
-            <h3>AI-assisted investigation</h3>
-            <p>当执行失败时，优先分析失败任务、日志片段与错误原因，而不是先去翻大量 Kubernetes 细节。</p>
-          </div>
-        </section>
-
         <section class="surface flow">
           <div class="surface-header">
             <div>
               <h3>Task execution flow</h3>
               <p>点击任务即可在右侧查看对应 Step 日志。</p>
             </div>
-            <span>{{ details.tasks.length }} tasks</span>
+            <span>{{ orderedTasks.length }} tasks · 按执行顺序</span>
           </div>
-          <PipelineStatusTimeline :tasks="details.tasks" :selected="selectedTask?.name" @select="selectedTask = $event" />
+          <PipelineStatusTimeline :tasks="orderedTasks" :selected="selectedTask?.name" @select="selectedTask = $event" />
         </section>
 
         <div class="content-grid">
@@ -59,7 +56,7 @@
               </div>
             </div>
             <button
-              v-for="task in details.tasks"
+              v-for="task in orderedTasks"
               :key="task.name"
               :class="{ active: selectedTask?.name === task.name, failed: task.status === 'Failed' }"
               @click="selectedTask = task"
@@ -85,21 +82,32 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { pipelineApi } from '../api/pipeline'
+import { projectApi } from '../api/project'
 import PageHeader from '../components/common/PageHeader.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 import PipelineStatusTimeline from '../components/pipeline/PipelineStatusTimeline.vue'
 import TaskRunLogViewer from '../components/pipeline/TaskRunLogViewer.vue'
+import DetailBreadcrumb from '../components/common/DetailBreadcrumb.vue'
 
 const route = useRoute()
 const projectId = Number(route.params.projectId)
 const name = String(route.params.name)
 const details = ref<Awaited<ReturnType<typeof pipelineApi.logs>>>()
+const projectName = ref('')
 const selectedTask = ref<any>()
 const loading = ref(false)
 const retrying = ref(false)
 let timer: number | undefined
 const canRetry = computed(() => ['Failed', 'Cancelled'].includes(details.value?.status || ''))
+const orderedTasks = computed(() => [...(details.value?.tasks || [])].sort((a, b) => {
+  const aTime = a.started_at || ''
+  const bTime = b.started_at || ''
+  if (!aTime && !bTime) return (a.name || '').localeCompare(b.name || '')
+  if (!aTime) return 1
+  if (!bTime) return -1
+  return aTime.localeCompare(bTime)
+}))
 
 const format = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
 const duration = computed(() => details.value?.started_at && details.value?.finished_at
@@ -109,10 +117,16 @@ const duration = computed(() => details.value?.started_at && details.value?.fini
 async function refresh() {
   loading.value = true
   try {
-    details.value = await pipelineApi.logs(projectId, name)
-    selectedTask.value = details.value.tasks.find(task => task.name === selectedTask.value?.name)
-      || details.value.tasks.find(task => task.status === 'Failed')
-      || details.value.tasks[0]
+    const [pipelineDetails] = await Promise.all([
+      pipelineApi.logs(projectId, name),
+      projectApi.get(projectId).then(project => {
+        projectName.value = project.name
+      }).catch(() => undefined),
+    ])
+    details.value = pipelineDetails
+    selectedTask.value = orderedTasks.value.find(task => task.name === selectedTask.value?.name)
+      || orderedTasks.value.find(task => task.status === 'Failed')
+      || orderedTasks.value[0]
     if (details.value && ['Succeeded', 'Failed'].includes(details.value.status)) clearInterval(timer)
   } catch (error) {
     ElMessage.error((error as Error).message)
@@ -151,23 +165,22 @@ onBeforeUnmount(() => clearInterval(timer))
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  gap: 10px;
 }
 
 .summary-card,
-.ai-callout,
 .flow,
 .tasks {
   box-shadow: none;
 }
 
 .summary-card {
-  padding: 20px;
+  padding: 14px 16px;
 }
 
 .summary-card span,
 .summary-card strong,
-summary-card p {
+.summary-card p {
   display: block;
 }
 
@@ -177,45 +190,24 @@ summary-card p {
 }
 
 .summary-card strong {
-  margin-top: 12px;
-  font-size: 24px;
+  margin-top: 8px;
+  font-size: 20px;
   letter-spacing: -0.04em;
 }
 
 .summary-card p {
-  margin-top: 10px;
+  margin-top: 6px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.7;
 }
 
-.ai-callout {
-  padding: 22px 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  background: linear-gradient(135deg, var(--primary-soft), transparent 65%), var(--theme-panel);
+.page-content :deep(.page-header) {
+  margin-bottom: 12px;
 }
 
-.ai-callout > span {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 14px;
-  background: var(--primary);
-  color: white;
-}
-
-.ai-callout h3 {
-  margin: 0 0 6px;
-  font-size: 18px;
-}
-
-.ai-callout p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.7;
+.page-content :deep(.page-header h1) {
+  font-size: 26px;
 }
 
 .flow {

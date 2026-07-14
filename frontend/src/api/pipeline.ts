@@ -23,6 +23,8 @@ export const pipelineApi = {
         task_name: string
         status: string
         pod?: string
+        started_at?: string
+        finished_at?: string
         steps: Array<{ step: string; container: string; logs: string }>
       }>
     }>(`/projects/${projectId}/pipelines/${name}/logs`),

@@ -249,6 +249,15 @@ onMounted(init)
   background: var(--surface-soft);
 }
 
+.el-dialog :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.el-dialog :deep(.el-input__wrapper),
+.el-dialog :deep(.el-select__wrapper) {
+  width: 100%;
+}
+
 .config-head {
   display: flex;
   justify-content: space-between;

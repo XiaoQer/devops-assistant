@@ -7,7 +7,6 @@
       </div>
       <div class="section-actions">
         <el-button @click="openCompare" :disabled="environments.length < 2">环境对比</el-button>
-        <el-button type="primary" @click="openCreate">＋ 新建环境</el-button>
       </div>
     </div>
 
@@ -69,7 +68,13 @@
       <EmptyState v-if="!environments.length && !loading" title="还没有环境" description="先创建 dev、staging 或 prod 环境，让交付策略与运行配置开始具备结构化表达。" />
     </el-skeleton>
 
-    <el-dialog v-model="dialog" :title="editing?.id ? '编辑环境' : '新建环境'" width="720px">
+    <el-dialog
+      v-model="dialog"
+      :title="editing?.id ? '编辑环境' : '新建环境'"
+      width="720px"
+      class="environment-dialog"
+      custom-class="environment-dialog"
+    >
       <el-form label-position="top">
         <div class="form-grid">
           <el-form-item label="环境标识"><el-input v-model="form.environment_name" :disabled="!!editing?.id" placeholder="qa" /></el-form-item>
@@ -253,14 +258,15 @@ onMounted(load)
 
 .section-head h3 {
   margin: 0 0 8px;
-  font-size: 22px;
+  font-size: 18px;
   letter-spacing: -0.03em;
 }
 
 .section-head p {
   margin: 0;
   color: var(--muted);
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .section-actions {
@@ -271,11 +277,11 @@ onMounted(load)
 .env-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .env-card {
-  padding: 22px;
+  padding: 16px;
   box-shadow: none;
 }
 
@@ -297,9 +303,9 @@ onMounted(load)
 }
 
 .env-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
   background: rgba(37, 99, 235, 0.12);
@@ -320,7 +326,7 @@ onMounted(load)
 
 .env-card h4 {
   margin: 0 0 4px;
-  font-size: 18px;
+  font-size: 16px;
   letter-spacing: -0.03em;
 }
 
@@ -331,15 +337,15 @@ onMounted(load)
 .env-pills {
   flex-wrap: wrap;
   gap: 8px;
-  margin: 18px 0;
+  margin: 12px 0;
 }
 
 .env-card dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 10px;
   margin: 0;
-  padding: 18px 0;
+  padding: 12px 0;
   border-top: 1px solid var(--border-soft);
   border-bottom: 1px solid var(--border-soft);
 }
@@ -360,7 +366,103 @@ onMounted(load)
 .env-card footer {
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 18px;
+  margin-top: 12px;
+}
+
+.env-card :deep(.el-button) {
+  min-height: 30px;
+  padding: 6px 12px;
+}
+
+.el-dialog :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.el-dialog :deep(.el-input__wrapper),
+.el-dialog :deep(.el-select__wrapper),
+.el-dialog :deep(.el-input-number) {
+  width: 100%;
+}
+
+:deep(.environment-dialog) {
+  --el-dialog-bg-color: #ffffff;
+  --el-text-color-primary: #0f172a;
+  --el-text-color-regular: #475569;
+  --el-border-color: #dbe2ea;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18) !important;
+}
+
+:deep(.environment-dialog .el-dialog__header) {
+  margin-right: 0;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+:deep(.environment-dialog .el-dialog__title) {
+  color: #0f172a !important;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+:deep(.environment-dialog .el-dialog__headerbtn) {
+  top: 17px;
+  right: 18px;
+}
+
+:deep(.environment-dialog .el-dialog__headerbtn .el-dialog__close) {
+  color: #64748b !important;
+}
+
+:deep(.environment-dialog .el-dialog__body) {
+  padding: 20px 24px 8px;
+  background: #ffffff !important;
+}
+
+:deep(.environment-dialog .el-dialog__footer) {
+  padding: 12px 24px 20px;
+  border-top: 1px solid #eef2f7;
+}
+
+:deep(.environment-dialog .el-form-item__label) {
+  padding-bottom: 6px;
+  color: #475569 !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+:deep(.environment-dialog .el-input__wrapper),
+:deep(.environment-dialog .el-select__wrapper),
+:deep(.environment-dialog .el-input-number) {
+  min-height: 40px;
+  border-radius: 9px;
+  background: #f8fafc !important;
+  box-shadow: 0 0 0 1px #dbe2ea inset !important;
+}
+
+:deep(.environment-dialog .el-input__inner),
+:deep(.environment-dialog .el-select__selected-item),
+:deep(.environment-dialog .el-input-number .el-input__inner) {
+  color: #0f172a !important;
+}
+
+:deep(.environment-dialog .el-input__wrapper:hover),
+:deep(.environment-dialog .el-select__wrapper:hover),
+:deep(.environment-dialog .el-input-number:hover) {
+  box-shadow: 0 0 0 1px #93c5fd inset !important;
+}
+
+:deep(.environment-dialog .el-input__wrapper.is-focus),
+:deep(.environment-dialog .el-select__wrapper.is-focused),
+:deep(.environment-dialog .el-input-number:focus-within) {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18) inset !important;
+}
+
+:deep(.environment-dialog .el-switch) {
+  --el-switch-on-color: #2563eb;
+  --el-switch-off-color: #cbd5e1;
 }
 
 .form-grid {

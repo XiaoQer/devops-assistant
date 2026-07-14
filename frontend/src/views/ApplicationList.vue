@@ -1,113 +1,84 @@
 <template>
   <div class="page-content page-stack">
     <PageHeader
-      eyebrow="Software catalog"
+      eyebrow="Release workspace"
       title="Applications"
-      description="用软件工作区而不是配置表，查看每个服务当前状态、最近交付与下一步操作。"
+      description="集中管理当前 Project 的服务发布状态、目标环境和最近一次交付。"
     >
       <el-button @click="store.load()" :loading="store.loading">刷新</el-button>
       <el-button type="primary" @click="router.push(`/devcenter/projects/${projectId}/applications/new`)">＋ 创建应用</el-button>
     </PageHeader>
 
-    <div class="metrics">
-      <MetricCard title="All services" :value="store.items.length" icon="◇" helper="当前已接入" />
-      <MetricCard title="Healthy" :value="succeeded" icon="✓" tone="green" helper="最近执行成功" />
-      <MetricCard title="In progress" :value="running" icon="↻" tone="blue" helper="仍在交付中" />
-      <MetricCard title="At risk" :value="failed" icon="!" tone="red" helper="需要人工介入" />
+    <div class="release-overview">
+      <section class="surface project-context">
+        <div class="context-heading">
+          <span class="context-mark">P{{ projectId }}</span>
+          <div>
+            <span class="eyebrow-label">CURRENT PROJECT</span>
+            <h3>{{ currentProject?.name || 'Project workspace' }}</h3>
+          </div>
+        </div>
+        <div class="context-targets">
+          <div><span>Default environment</span><strong>dev</strong></div>
+          <div><span>Release policy</span><strong>Project scoped</strong></div>
+          <div><span>Service count</span><strong>{{ store.items.length }}</strong></div>
+        </div>
+      </section>
+      <div class="metrics">
+        <MetricCard title="Total services" :value="store.items.length" icon="◇" helper="当前 Project" />
+        <MetricCard title="Ready to release" :value="succeeded" icon="✓" tone="green" helper="最近执行成功" />
+        <MetricCard title="In delivery" :value="running" icon="↻" tone="blue" helper="构建或部署中" />
+        <MetricCard title="Needs attention" :value="failed" icon="!" tone="red" helper="最近执行失败" />
+      </div>
     </div>
 
     <section class="surface filter-bar">
       <div class="search-box">
-        <span>⌘</span>
-        <el-input v-model="query" placeholder="搜索应用、仓库或技术栈…" clearable />
+        <span>⌕</span>
+        <el-input v-model="query" placeholder="搜索服务、仓库或镜像…" clearable />
       </div>
       <div class="filter-actions">
-        <el-select v-model="projectId" style="width: 220px">
-          <el-option label="全部项目" :value="0" />
-          <el-option v-for="project in projects" :key="project.id" :label="project.name" :value="project.id" />
-        </el-select>
         <el-select v-model="status" style="width: 150px">
-          <el-option label="全部状态" value="" />
+          <el-option label="All statuses" value="" />
           <el-option v-for="s in statuses" :key="s" :label="s" :value="s" />
         </el-select>
         <span class="result-count">{{ filtered.length }} services</span>
       </div>
     </section>
 
-    <div class="content-grid">
-      <section class="applications-grid">
-        <article v-for="app in paged" :key="app.id" class="surface app-card">
-          <div class="app-card-head">
-            <div class="app-identify">
-              <span class="app-avatar">{{ app.name[0]?.toUpperCase() }}</span>
-              <div>
-                <h3>{{ app.name }}</h3>
-                <p>{{ shortRepo(app.repo_url) }}</p>
-                <small class="project-badge">{{ app.project_name || 'Default Project' }}</small>
-              </div>
-            </div>
-            <StatusBadge :status="getStatus(app)" />
-          </div>
-
-          <div class="app-meta">
-            <span class="soft-pill">{{ app.language || 'Unknown runtime' }}</span>
-            <span class="soft-pill">{{ app.framework || 'Framework n/a' }}</span>
-            <span class="soft-pill">{{ app.namespace }}</span>
-          </div>
-
-          <div class="app-summary">
-            <div>
-              <label>Current image</label>
-              <b>{{ app.image_name }}:{{ app.image_tag }}</b>
-            </div>
-            <div>
-              <label>Latest pipeline</label>
-              <b>{{ app.latest_execution?.pipeline_run_name || 'No runs yet' }}</b>
-            </div>
-            <div>
-              <label>Branch</label>
-              <b>{{ app.branch }}</b>
-            </div>
-          </div>
-
-          <div class="app-actions">
-            <el-button @click="router.push(`/devcenter/projects/${projectId}/applications/${app.id}`)">打开工作区</el-button>
-            <el-button type="primary" @click="router.push(`/devcenter/projects/${projectId}/applications/${app.id}`)">进入发布</el-button>
-          </div>
-        </article>
-
-        <EmptyState
-          v-if="!paged.length && !store.loading"
-          title="没有找到匹配的服务"
-          description="换一个搜索条件，或者直接创建一个新的应用工作区。"
-        >
-          <el-button type="primary" @click="router.push(`/devcenter/projects/${projectId}/applications/new`)">创建应用</el-button>
-        </EmptyState>
-      </section>
-
-      <aside class="surface ai-rail">
-        <div class="surface-header">
-          <div>
-            <h3>AI suggestions</h3>
-            <p>帮助你更快定位应该优先处理的服务。</p>
-          </div>
+    <section class="surface release-table-card">
+      <div class="table-header">
+        <div>
+          <span class="eyebrow-label">RELEASE INVENTORY</span>
+          <h3>服务发布清单</h3>
+          <p>选择服务进入发布工作区，查看环境、流水线和回滚记录。</p>
         </div>
-        <div class="rail-list">
-          <article>
-            <span class="soft-pill">Priority</span>
-            <h4>{{ failed ? `${failed} 个服务最近交付失败` : '当前没有失败服务' }}</h4>
-            <p>{{ failed ? '建议先打开失败服务工作区，查看执行日志并发起修复。' : '可以开始新一轮部署或清理待优化配置。' }}</p>
-            <el-button @click="router.push(failed ? `/devcenter/projects/${projectId}/pipelines` : `/devcenter/projects/${projectId}/applications/new`)">{{ failed ? '查看失败执行' : '新建应用' }}</el-button>
-          </article>
-          <article>
-            <span class="soft-pill">Focus</span>
-            <h4>{{ running ? `${running} 个服务正在交付中` : '当前没有进行中的交付' }}</h4>
-            <p>把注意力放在真正影响交付的工作流上，而不是浏览大而全的表格。</p>
-            <el-button @click="router.push(`/devcenter/projects/${projectId}/releases`)">进入发布中心</el-button>
-          </article>
+        <div class="table-actions">
+          <el-button @click="router.push(`/devcenter/projects/${projectId}/pipelines`)">查看 Pipeline</el-button>
+          <el-button @click="router.push(`/devcenter/projects/${projectId}/releases`)">发布历史</el-button>
         </div>
-      </aside>
-    </div>
+      </div>
+
+      <el-table v-if="paged.length" :data="paged" class="release-table" @row-click="openApplication">
+        <el-table-column label="服务" min-width="250">
+          <template #default="{ row }">
+            <div class="service-cell">
+              <span class="app-avatar">{{ row.name[0]?.toUpperCase() }}</span>
+              <div><strong>{{ row.name }}</strong><small>{{ shortRepo(row.repo_url) }}</small></div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="150"><template #default="{ row }"><StatusBadge :status="getStatus(row)" /></template></el-table-column>
+        <el-table-column label="运行环境" width="150"><template #default="{ row }"><span class="env-value">{{ row.namespace || 'default' }}</span></template></el-table-column>
+        <el-table-column label="镜像版本" min-width="220"><template #default="{ row }"><code>{{ row.image_name ? `${row.image_name}:${row.image_tag}` : 'Registry not configured' }}</code></template></el-table-column>
+        <el-table-column label="最近执行" min-width="220"><template #default="{ row }"><div class="execution-cell"><strong>{{ row.latest_execution?.pipeline_run_name || '尚未发布' }}</strong><small>{{ formatExecution(row.latest_execution?.created_at) }}</small></div></template></el-table-column>
+        <el-table-column label="操作" width="120" fixed="right"><template #default="{ row }"><el-button link type="primary" @click.stop="openApplication(row)">进入发布</el-button></template></el-table-column>
+      </el-table>
+
+      <EmptyState v-else-if="!store.loading" title="没有找到匹配的服务" description="换一个筛选条件，或者在当前 Project 创建一个新的应用。">
+        <el-button type="primary" @click="router.push(`/devcenter/projects/${projectId}/applications/new`)">创建应用</el-button>
+      </EmptyState>
+    </section>
 
     <footer v-if="filtered.length > pageSize" class="pager">
       <el-pagination v-model:current-page="page" :page-size="pageSize" layout="prev, pager, next" :total="filtered.length" />
@@ -118,7 +89,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { useApplicationStore } from '../stores/application'
 import { projectApi } from '../api/project'
 import { useProjectStore } from '../stores/project'
@@ -139,6 +109,7 @@ const page = ref(1)
 const pageSize = 9
 const statuses = ['Succeeded', 'Running', 'Pending', 'Failed', 'analyzed']
 const projects = ref<Project[]>([])
+const currentProject = computed(() => projects.value.find(project => project.id === projectId.value))
 
 function getStatus(application: Application) {
   return application.latest_execution?.status || application.status
@@ -156,6 +127,14 @@ const failed = computed(() => store.items.filter(application => getStatus(applic
 
 function shortRepo(url: string) {
   return url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '')
+}
+
+function formatExecution(value?: string) {
+  return value ? new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '等待首次发布'
+}
+
+function openApplication(application: Application) {
+  router.push(`/devcenter/projects/${projectId.value}/applications/${application.id}`)
 }
 
 watch([query, status, projectId], () => {
@@ -176,19 +155,168 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.page-content :deep(.page-header) {
+  margin-bottom: 16px;
+}
+
+.page-content :deep(.page-header h1) {
+  font-size: 28px;
+}
+
+.page-content :deep(.page-header p) {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.page-content :deep(.page-header .eyebrow) {
+  min-height: 24px;
+  margin-bottom: 7px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.page-content :deep(.metric) {
+  padding: 14px 16px;
+}
+
+.page-content :deep(.metric strong) {
+  margin: 12px 0 7px;
+  font-size: 26px;
+}
+
+.page-content :deep(.metric-top i) {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+}
+
+.release-overview {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.project-context,
+.release-table-card {
+  box-shadow: none;
+}
+
+.project-context {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 116px;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-soft) 100%);
+}
+
+.context-heading,
+.service-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.context-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--primary);
+  color: white;
+  font-weight: 800;
+}
+
+.eyebrow-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.context-heading h3,
+.table-header h3 {
+  margin: 4px 0 0;
+  letter-spacing: -.03em;
+}
+
+.context-targets {
+  display: flex;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.context-targets div {
+  display: grid;
+  gap: 4px;
+}
+
+.context-targets span,
+.context-targets strong {
+  font-size: 11px;
+}
+
+.context-targets span,
+.service-cell small,
+.execution-cell small {
+  color: var(--muted);
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  gap: 10px;
 }
 
 .filter-bar {
-  padding: 16px 20px;
+  padding: 10px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   box-shadow: none;
+}
+
+.release-table-card {
+  overflow: hidden;
+}
+
+.table-header {
+  padding: 16px 20px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.table-header p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.release-table :deep(.el-table__header th) {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.release-table :deep(.el-table__row) {
+  cursor: pointer;
+}
+
+.release-table :deep(.el-table__row:hover > td) {
+  background: var(--primary-soft);
 }
 
 .search-box {
@@ -224,41 +352,10 @@ onMounted(async () => {
   font-size: 13px;
 }
 
-.content-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.8fr);
-  gap: 16px;
-}
-
-.applications-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  align-content: start;
-}
-
-.app-card {
-  padding: 22px;
-  box-shadow: none;
-}
-
-.app-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.app-identify {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
 .app-avatar {
   width: 48px;
   height: 48px;
-  border-radius: 16px;
+  border-radius: 11px;
   display: grid;
   place-items: center;
   background: var(--primary-soft);
@@ -266,92 +363,28 @@ onMounted(async () => {
   font-weight: 800;
 }
 
-.app-identify h3 {
-  margin: 0;
-  font-size: 18px;
-  letter-spacing: -0.03em;
-}
-
-.app-identify p {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.project-badge {
-  display: inline-block;
-  margin-top: 8px;
-  color: var(--primary);
-  font-size: 12px;
-}
-
-.app-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 18px 0;
-}
-
-.app-summary {
-  display: grid;
-  gap: 14px;
-  padding: 18px 0;
-  border-top: 1px solid var(--border-soft);
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.app-summary label,
-.app-summary b {
+.service-cell strong,
+.service-cell small,
+.execution-cell strong,
+.execution-cell small {
   display: block;
 }
 
-.app-summary label {
-  color: var(--muted);
+.service-cell small,
+.execution-cell small {
+  margin-top: 4px;
   font-size: 12px;
-  margin-bottom: 6px;
 }
 
-.app-summary b {
-  font-size: 14px;
-  line-height: 1.6;
-  word-break: break-word;
-}
-
-.app-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.ai-rail {
-  box-shadow: none;
-}
-
-.rail-list {
-  padding: 12px 24px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.rail-list article {
-  padding: 18px;
-  border-radius: 14px;
-  background: var(--surface-soft);
-  border: 1px solid var(--border-soft);
-}
-
-.rail-list h4 {
-  margin: 14px 0 8px;
-  font-size: 17px;
-  letter-spacing: -0.03em;
-}
-
-.rail-list p {
-  margin: 0 0 16px;
+.env-value {
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.release-table code {
+  color: var(--text);
+  font-size: 12px;
 }
 
 .pager {
@@ -360,8 +393,7 @@ onMounted(async () => {
 }
 
 @media (max-width: 1200px) {
-  .content-grid,
-  .applications-grid,
+  .release-overview,
   .metrics {
     grid-template-columns: 1fr;
   }
@@ -373,6 +405,10 @@ onMounted(async () => {
 
   .filter-actions {
     justify-content: space-between;
+  }
+
+  .table-header {
+    flex-direction: column;
   }
 }
 </style>

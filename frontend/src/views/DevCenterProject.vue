@@ -2,6 +2,10 @@
   <div class="page-content page-stack">
     <el-skeleton v-if="loading && !project" animated :rows="10" />
     <template v-else-if="project">
+      <DetailBreadcrumb :items="[
+        { label: 'DevCenter', to: '/devcenter/projects' },
+        { label: project.name, current: true },
+      ]" />
       <PageHeader
         eyebrow="Project DevCenter"
         :title="`${project.name} · DevCenter`"
@@ -137,6 +141,7 @@ import PageHeader from '../components/common/PageHeader.vue'
 import MetricCard from '../components/common/MetricCard.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
+import DetailBreadcrumb from '../components/common/DetailBreadcrumb.vue'
 
 const route = useRoute()
 const router = useRouter()

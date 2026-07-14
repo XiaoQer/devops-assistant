@@ -209,7 +209,17 @@ class TektonService:
                 "started_at": item.get("status", {}).get("startTime"),
                 "finished_at": item.get("status", {}).get("completionTime"),
             })
-        return task_runs
+        # Kubernetes list responses are not guaranteed to reflect execution
+        # order. Sort by the actual TaskRun start timestamp and keep pending
+        # tasks at the end in a stable order.
+        return sorted(
+            task_runs,
+            key=lambda item: (
+                item.get("started_at") is None,
+                item.get("started_at") or "",
+                item.get("name") or "",
+            ),
+        )
 
     def get_pipeline_run_logs(self, pipeline_run_name, namespace):
         pods = self.core_api.list_namespaced_pod(

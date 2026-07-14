@@ -284,6 +284,77 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
         self.assertNotIn(inconsistent.id, [item["id"] for item in project_b_center])
         self.assert_not_found(detail, "PIPELINE_EXECUTION_NOT_FOUND")
 
+    def create_inconsistent_approval(self, image_tag):
+        approval = ApprovalRecord(
+            application_id=self.application.id,
+            project_id=self.project_b.id,
+            environment="dev",
+            namespace="payments-dev",
+            image_name=self.application.image_name,
+            image_tag=image_tag,
+            applicant="admin",
+        )
+        db.session.add(approval)
+        db.session.commit()
+        return approval
+
+    def test_inconsistent_approval_is_hidden_from_project_list(self):
+        inconsistent = self.create_inconsistent_approval("approval-list")
+
+        items = self.client.get(
+            f"/api/projects/{self.project_b.id}/approvals"
+        ).get_json()["data"]["items"]
+
+        self.assertNotIn(inconsistent.id, [item["id"] for item in items])
+
+    def test_inconsistent_approval_is_hidden_from_project_detail(self):
+        inconsistent = self.create_inconsistent_approval("approval-detail")
+
+        response = self.client.get(
+            f"/api/projects/{self.project_b.id}/approvals/{inconsistent.id}"
+        )
+
+        self.assert_not_found(response, "APPROVAL_NOT_FOUND")
+
+    @patch("app.services.approval_service.ApplicationService.deploy")
+    @patch("app.routes.approvals.ApprovalService.approve")
+    def test_inconsistent_approval_cannot_be_approved(
+        self, approve, deploy
+    ):
+        inconsistent = self.create_inconsistent_approval("approval-approve")
+        approve.return_value = inconsistent
+
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_b.id}/approvals/"
+            f"{inconsistent.id}/approve",
+            self.csrf_token,
+        )
+
+        self.assert_not_found(response, "APPROVAL_NOT_FOUND")
+        approve.assert_not_called()
+        deploy.assert_not_called()
+
+    @patch("app.services.approval_service.ApplicationService.deploy")
+    @patch("app.routes.approvals.ApprovalService.reject")
+    def test_inconsistent_approval_cannot_be_rejected(
+        self, reject, deploy
+    ):
+        inconsistent = self.create_inconsistent_approval("approval-reject")
+        reject.return_value = inconsistent
+
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_b.id}/approvals/"
+            f"{inconsistent.id}/reject",
+            self.csrf_token,
+            json={"comment": "wrong project"},
+        )
+
+        self.assert_not_found(response, "APPROVAL_NOT_FOUND")
+        reject.assert_not_called()
+        deploy.assert_not_called()
+
     @patch("app.services.release_service.TektonService")
     def test_project_release_center_synchronizes_only_owned_releases(self, tekton):
         other_application = Application(

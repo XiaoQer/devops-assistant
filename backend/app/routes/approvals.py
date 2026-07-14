@@ -1,6 +1,6 @@
 from flask import Blueprint, g, request
 
-from app.models import ApprovalRecord
+from app.models import Application, ApprovalRecord
 from app.services.application_service import ApplicationService
 from app.services.approval_service import ApprovalService
 from app.services.project_service import ProjectService
@@ -16,9 +16,13 @@ bp = Blueprint(
 
 
 def get_approval(project_id, approval_id):
-    item = ApprovalRecord.query.filter_by(
-        id=approval_id,
-        project_id=project_id,
+    item = ApprovalRecord.query.join(
+        Application,
+        ApprovalRecord.application_id == Application.id,
+    ).filter(
+        ApprovalRecord.id == approval_id,
+        ApprovalRecord.project_id == project_id,
+        Application.project_id == project_id,
     ).first()
     if not item:
         raise ApiError("审批记录不存在", 404, "APPROVAL_NOT_FOUND")
@@ -30,11 +34,19 @@ def list_approvals(project_id):
     ProjectService().get(project_id)
     page = max(request.args.get("page", 1, type=int), 1)
     page_size = min(max(request.args.get("pageSize", 20, type=int), 1), 100)
-    query = ApprovalRecord.query.filter_by(project_id=project_id)
+    query = ApprovalRecord.query.join(
+        Application,
+        ApprovalRecord.application_id == Application.id,
+    ).filter(
+        ApprovalRecord.project_id == project_id,
+        Application.project_id == project_id,
+    )
     if request.args.get("status"):
-        query = query.filter_by(status=request.args["status"])
+        query = query.filter(ApprovalRecord.status == request.args["status"])
     if request.args.get("environment"):
-        query = query.filter_by(environment=request.args["environment"])
+        query = query.filter(
+            ApprovalRecord.environment == request.args["environment"]
+        )
     pagination = query.order_by(ApprovalRecord.created_at.desc()).paginate(
         page=page, per_page=page_size, error_out=False
     )

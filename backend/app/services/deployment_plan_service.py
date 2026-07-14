@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from app.models import ApplicationConfig, ApplicationEnvironment, ReleaseRecord
+from app.models import Project
+from app.utils.errors import ApiError
 from .application_service import ApplicationService
+from .delivery_context_service import DeliveryContextService
 from .environment_service import EnvironmentService
-from .registry_service import RegistryService
 
 
 class DeploymentPlanService:
@@ -23,13 +25,17 @@ class DeploymentPlanService:
 
         pipeline_name = ApplicationService.PIPELINES.get((app.language, app.build_type))
         image_tag = str(payload.get("image_tag", app.image_tag) or app.image_tag)
-        registry = RegistryService().get_default(app.project_id)
-        image_name = app.image_name
-        if environment:
-            if registry:
-                image_name = f"{registry.image_prefix}/{app.name}"
-            elif environment.image_registry:
-                image_name = f"{environment.image_registry.rstrip('/')}/{app.name}"
+        project = Project.query.filter_by(id=app.project_id).first()
+        context = None
+        context_error = None
+        if project:
+            try:
+                context = DeliveryContextService().resolve(
+                    project, app, environment_name
+                )
+            except ApiError as exc:
+                context_error = exc
+        image_name = context.image_name if context else app.image_name
 
         checks: list[dict[str, str]] = []
 
@@ -71,26 +77,45 @@ class DeploymentPlanService:
                 f"{app.language}/{app.build_type} 尚未配置 Tekton 流水线模板。",
             )
 
-        if registry:
+        if context:
+            add_check(
+                "cluster",
+                "pass",
+                "目标 Kubernetes 集群已就绪",
+                f"将使用 {context.cluster.name} / {context.kube_context}。",
+            )
             add_check(
                 "registry",
                 "pass",
                 "检测到默认镜像仓库",
-                f"镜像将推送到 {registry.image_prefix}。",
+                f"镜像将推送到 {context.registry.image_prefix}。",
             )
-        elif environment and environment.image_registry:
+        elif context_error and context_error.code in {
+            "CLUSTER_REQUIRED",
+            "CLUSTER_NOT_READY",
+        }:
+            add_check(
+                "cluster",
+                "blocked",
+                context_error.message,
+                "请在 Environment 中绑定并测试当前 Project 的 Kubernetes 集群。",
+            )
+        elif context_error and context_error.code in {
+            "REGISTRY_REQUIRED",
+            "REGISTRY_NOT_READY",
+        }:
+            if environment and environment.kubernetes_cluster:
+                add_check(
+                    "cluster",
+                    "pass",
+                    "目标 Kubernetes 集群已就绪",
+                    f"将使用 {environment.kubernetes_cluster.name}。",
+                )
             add_check(
                 "registry",
-                "warn",
-                "未配置平台级默认镜像仓库",
-                f"将回退使用环境镜像仓库 {environment.image_registry}。",
-            )
-        else:
-            add_check(
-                "registry",
-                "warn",
-                "未检测到默认镜像仓库配置",
-                f"将继续使用应用当前镜像地址 {app.image_name}。",
+                "blocked",
+                context_error.message,
+                "请配置并测试当前 Project 的默认 Registry。",
             )
 
         config_items = []
@@ -200,6 +225,23 @@ class DeploymentPlanService:
                 "image_tag": image_tag,
                 "pipeline_name": pipeline_name,
                 "approval_required": bool(environment and environment.approval_required),
+                "cluster": (
+                    {
+                        "id": context.cluster.id,
+                        "name": context.cluster.name,
+                        "connection_status": context.cluster.connection_status,
+                    }
+                    if context else None
+                ),
+                "registry": (
+                    {
+                        "id": context.registry.id,
+                        "name": context.registry.name,
+                        "image_prefix": context.registry.image_prefix,
+                        "connection_status": context.registry.connection_status,
+                    }
+                    if context else None
+                ),
             },
             "checks": checks,
             "blocked_checks": [item["name"] for item in blocked],

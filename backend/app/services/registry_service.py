@@ -45,6 +45,13 @@ class RegistryService:
             project_id=None, is_default=True, is_active=True
         ).first()
 
+    def get_project_default(self, project_id):
+        return ContainerRegistry.query.filter_by(
+            project_id=project_id,
+            is_default=True,
+            is_active=True,
+        ).first()
+
     def create(self, project, payload):
         values = self._validated(payload, require_credentials=True)
         if ContainerRegistry.query.filter_by(

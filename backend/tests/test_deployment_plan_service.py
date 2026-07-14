@@ -8,6 +8,7 @@ from app.models import (
     ApplicationConfig,
     ApplicationEnvironment,
     ContainerRegistry,
+    KubernetesCluster,
     Project,
     ReleaseRecord,
     User,
@@ -69,6 +70,40 @@ class DeploymentPlanServiceTest(unittest.TestCase):
         db.session.flush()
         return app
 
+    def _add_ready_context(self, app, environment):
+        cluster = KubernetesCluster(
+            project_id=app.project_id,
+            name=f"cluster-{app.id}-{environment.id}",
+            kube_context="target-context",
+            environment_label=environment.environment_name,
+            encrypted_kubeconfig="ciphertext",
+            connection_status="connected",
+            is_active=True,
+            is_default=True,
+        )
+        db.session.add(cluster)
+        db.session.flush()
+        environment.kubernetes_cluster_id = cluster.id
+        registry = ContainerRegistry.query.filter_by(
+            project_id=app.project_id,
+            is_default=True,
+        ).first()
+        if not registry:
+            registry = ContainerRegistry(
+                project_id=app.project_id,
+                name=f"registry-{app.id}",
+                provider="ghcr",
+                server="ghcr.io",
+                namespace="acme",
+                username="robot",
+                encrypted_password="ciphertext",
+                connection_status="connected",
+                is_default=True,
+                is_active=True,
+            )
+            db.session.add(registry)
+        return cluster, registry
+
     def test_build_plan_flags_prod_risks_and_approval(self):
         app = self._create_application()
         staging = ApplicationEnvironment(
@@ -87,6 +122,7 @@ class DeploymentPlanServiceTest(unittest.TestCase):
         )
         db.session.add_all([staging, prod])
         db.session.flush()
+        self._add_ready_context(app, prod)
         db.session.add(ApplicationConfig(
             application_id=app.id,
             environment_id=staging.id,
@@ -143,6 +179,44 @@ class DeploymentPlanServiceTest(unittest.TestCase):
         self.assertFalse(plan["can_deploy"])
         self.assertIn("environment", plan["blocked_checks"])
 
+    def test_build_plan_blocks_environment_without_ready_cluster(self):
+        app = self._create_application()
+        environment = ApplicationEnvironment(
+            application_id=app.id,
+            environment_name="dev",
+            namespace="payment-service-dev",
+            status="Healthy",
+        )
+        db.session.add(environment)
+        db.session.flush()
+        self._add_ready_context(app, environment)
+        environment.kubernetes_cluster_id = None
+        db.session.commit()
+
+        plan = DeploymentPlanService().build_plan(app, {"environment": "dev"})
+
+        self.assertFalse(plan["can_deploy"])
+        self.assertIn("cluster", plan["blocked_checks"])
+
+    def test_build_plan_blocks_unready_default_registry(self):
+        app = self._create_application()
+        environment = ApplicationEnvironment(
+            application_id=app.id,
+            environment_name="dev",
+            namespace="payment-service-dev",
+            status="Healthy",
+        )
+        db.session.add(environment)
+        db.session.flush()
+        _cluster, registry = self._add_ready_context(app, environment)
+        registry.connection_status = "failed"
+        db.session.commit()
+
+        plan = DeploymentPlanService().build_plan(app, {"environment": "dev"})
+
+        self.assertFalse(plan["can_deploy"])
+        self.assertIn("registry", plan["blocked_checks"])
+
     def test_build_plan_uses_application_project_default_registry(self):
         project = Project(key="payments", name="Payments")
         other_project = Project(key="platform", name="Platform")
@@ -156,6 +230,23 @@ class DeploymentPlanServiceTest(unittest.TestCase):
             namespace="payment-service-dev",
             status="Healthy",
         ))
+        db.session.flush()
+        environment = ApplicationEnvironment.query.filter_by(
+            application_id=app.id,
+            environment_name="dev",
+        ).one()
+        cluster = KubernetesCluster(
+            project_id=project.id,
+            name="payments-dev",
+            kube_context="payments",
+            environment_label="development",
+            encrypted_kubeconfig="ciphertext",
+            connection_status="connected",
+            is_default=True,
+        )
+        db.session.add(cluster)
+        db.session.flush()
+        environment.kubernetes_cluster_id = cluster.id
         db.session.add_all([
             ContainerRegistry(
                 project_id=project.id,
@@ -165,6 +256,7 @@ class DeploymentPlanServiceTest(unittest.TestCase):
                 namespace="acme-payments",
                 username="robot",
                 encrypted_password="ciphertext",
+                connection_status="connected",
                 is_default=True,
             ),
             ContainerRegistry(
@@ -175,6 +267,7 @@ class DeploymentPlanServiceTest(unittest.TestCase):
                 namespace="platform",
                 username="robot",
                 encrypted_password="ciphertext",
+                connection_status="connected",
                 is_default=True,
             ),
         ])
@@ -190,6 +283,8 @@ class DeploymentPlanServiceTest(unittest.TestCase):
             check for check in plan["checks"] if check["name"] == "registry"
         )
         self.assertEqual(registry_check["status"], "pass")
+        self.assertEqual(plan["target"]["cluster"]["id"], cluster.id)
+        self.assertEqual(plan["target"]["registry"]["name"], "Payments GHCR")
 
     @patch("app.services.application_service.TektonService.create_pipeline_run")
     @patch("app.services.application_service.ConfigurationService.materialize")
@@ -225,12 +320,15 @@ class DeploymentPlanServiceTest(unittest.TestCase):
 
     def test_deploy_plan_route_returns_structured_plan(self):
         app = self._create_application()
-        db.session.add(ApplicationEnvironment(
+        environment = ApplicationEnvironment(
             application_id=app.id,
             environment_name="dev",
             namespace="payment-service-dev",
             status="Healthy",
-        ))
+        )
+        db.session.add(environment)
+        db.session.flush()
+        self._add_ready_context(app, environment)
         db.session.commit()
 
         response = csrf_post(

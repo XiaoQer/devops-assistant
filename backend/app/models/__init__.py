@@ -10,10 +10,11 @@ from .approval_record import ApprovalRecord
 from .container_registry import ContainerRegistry
 from .user import User
 from .user_session import UserSession
+from .build_version import ApplicationBuildVersion
 
 __all__ = [
     "Application", "PipelineExecution", "Project", "ProjectMember",
     "KubernetesCluster", "ReleaseRecord",
     "ApplicationEnvironment", "ApplicationConfig", "ApprovalRecord",
-    "ContainerRegistry", "User", "UserSession",
+    "ContainerRegistry", "User", "UserSession", "ApplicationBuildVersion",
 ]

@@ -39,6 +39,7 @@
 - 基于代码仓库创建应用，并分析 Java、Node.js 或 Dockerfile 项目。
 - 应用环境和配置的增删改查、克隆、比较与导出。
 - 部署计划、Tekton PipelineRun 创建、重试、结构化状态和日志。
+- Application 构建版本与 Build once/Promote 流程：Build Pipeline 只构建并推送镜像，发布使用已成功构建版本执行 Deploy-only Pipeline；同一构建版本可连续发布到多个环境，生产发布审批关联具体构建版本。
 - 发布历史、回滚流程和交付状态同步。
 - Application Environment 已解析为 Project 交付上下文：已绑定且连接成功的 Kubernetes
   集群作为唯一目标客户端，Project 默认且连接成功的 Registry 作为构建镜像地址；未测试、

@@ -1,0 +1,22 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata: {name: node-npm-kaniko-build, namespace: devops-platform}
+spec:
+  params: [{name: repo_url, type: string}, {name: branch, type: string}, {name: image, type: string}]
+  workspaces: [{name: source}]
+  tasks:
+    - name: clone
+      taskSpec:
+        params: [{name: repo_url}, {name: branch}]
+        workspaces: [{name: source}]
+        steps: [{name: git-clone, image: alpine/git:2.45.2, script: rm -rf $(workspaces.source.path)/* && git clone --depth=1 --branch "$(params.branch)" "$(params.repo_url)" $(workspaces.source.path)}]
+      params: [{name: repo_url, value: $(params.repo_url)}, {name: branch, value: $(params.branch)}]
+      workspaces: [{name: source, workspace: source}]
+    - name: build-image
+      runAfter: [clone]
+      taskSpec:
+        params: [{name: image}]
+        workspaces: [{name: source}]
+        steps: [{name: kaniko, image: gcr.io/kaniko-project/executor:v1.23.2, volumeMounts: [{name: docker-config, mountPath: /kaniko/.docker, readOnly: true}], args: [--dockerfile=$(workspaces.source.path)/Dockerfile, --context=$(workspaces.source.path), --destination=$(params.image)]}]
+      params: [{name: image, value: $(params.image)}]
+      workspaces: [{name: source, workspace: source}]

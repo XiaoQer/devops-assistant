@@ -9,6 +9,9 @@ class ReleaseRecord(db.Model):
     application_id = db.Column(
         db.Integer, db.ForeignKey("applications.id"), nullable=False, index=True
     )
+    build_version_id = db.Column(
+        db.Integer, db.ForeignKey("application_build_versions.id"), nullable=True, index=True
+    )
     project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=False)
     release_type = db.Column(db.String(20), default="deploy", nullable=False)
     environment = db.Column(db.String(30), default="dev", nullable=False, index=True)
@@ -40,6 +43,7 @@ class ReleaseRecord(db.Model):
         return {
             "id": self.id,
             "application_id": self.application_id,
+            "build_version_id": self.build_version_id,
             "project_id": self.project_id,
             "release_type": self.release_type,
             "environment": self.environment,

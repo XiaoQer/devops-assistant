@@ -1,0 +1,71 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata: {name: java-maven-deploy-only, namespace: devops-platform}
+spec:
+  params:
+    - {name: image, type: string}
+    - {name: app, type: string}
+    - {name: namespace, type: string}
+    - {name: port, type: string}
+    - {name: replicas, type: string}
+    - {name: cpu_request, type: string}
+    - {name: cpu_limit, type: string}
+    - {name: memory_request, type: string}
+    - {name: memory_limit, type: string}
+    - {name: deploy_strategy, type: string}
+    - {name: max_unavailable, type: string}
+    - {name: max_surge, type: string}
+    - {name: ingress_host, type: string}
+    - {name: config_map_name, type: string}
+    - {name: secret_name, type: string}
+    - {name: registry_secret_name, type: string}
+    - {name: kubeconfig_secret_name, type: string}
+    - {name: kube_context, type: string}
+  tasks:
+    - name: deploy
+      taskSpec:
+        params:
+          - {name: image}
+          - {name: app}
+          - {name: namespace}
+          - {name: port}
+          - {name: namespace}
+          - {name: port}
+          - {name: replicas}
+          - {name: cpu_request}
+          - {name: cpu_limit}
+          - {name: memory_request}
+          - {name: memory_limit}
+          - {name: deploy_strategy}
+          - {name: max_unavailable}
+          - {name: max_surge}
+          - {name: registry_secret_name}
+          - {name: kubeconfig_secret_name}
+          - {name: kube_context}
+        steps:
+          - name: kubectl
+            image: bitnami/kubectl:1.31
+            volumeMounts: [{name: target-kubeconfig, mountPath: /var/run/aegis/kubeconfig, readOnly: true}]
+            script: |
+              export KUBECONFIG=/var/run/aegis/kubeconfig/config
+              kubectl --context="$(params.kube_context)" -n "$(params.namespace)" create deployment "$(params.app)" --image="$(params.image)" --dry-run=client -o yaml | kubectl --context="$(params.kube_context)" -n "$(params.namespace)" apply -f -
+              kubectl --context="$(params.kube_context)" -n "$(params.namespace)" scale deployment "$(params.app)" --replicas="$(params.replicas)"
+              kubectl --context="$(params.kube_context)" -n "$(params.namespace)" set resources deployment "$(params.app)" --requests="cpu=$(params.cpu_request),memory=$(params.memory_request)" --limits="cpu=$(params.cpu_limit),memory=$(params.memory_limit)"
+              kubectl --context="$(params.kube_context)" -n "$(params.namespace)" expose deployment "$(params.app)" --port="$(params.port)" --target-port="$(params.port)" --dry-run=client -o yaml | kubectl --context="$(params.kube_context)" -n "$(params.namespace)" apply -f -
+        volumes: [{name: target-kubeconfig, secret: {secretName: $(params.kubeconfig_secret_name), optional: false}}]
+      params:
+        - {name: image, value: $(params.image)}
+        - {name: app, value: $(params.app)}
+        - {name: namespace, value: $(params.namespace)}
+        - {name: port, value: $(params.port)}
+        - {name: replicas, value: $(params.replicas)}
+        - {name: cpu_request, value: $(params.cpu_request)}
+        - {name: cpu_limit, value: $(params.cpu_limit)}
+        - {name: memory_request, value: $(params.memory_request)}
+        - {name: memory_limit, value: $(params.memory_limit)}
+        - {name: deploy_strategy, value: $(params.deploy_strategy)}
+        - {name: max_unavailable, value: $(params.max_unavailable)}
+        - {name: max_surge, value: $(params.max_surge)}
+        - {name: registry_secret_name, value: $(params.registry_secret_name)}
+        - {name: kubeconfig_secret_name, value: $(params.kubeconfig_secret_name)}
+        - {name: kube_context, value: $(params.kube_context)}

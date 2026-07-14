@@ -12,12 +12,33 @@ export interface AuthResponse {
 
 export interface Execution {
   id: number
+  build_version_id?: number
   pipeline_run_name: string
   status: string
   started_at?: string
   finished_at?: string
   error_message?: string
   created_at: string
+}
+
+export interface BuildVersion {
+  id: number
+  application_id: number
+  project_id: number
+  version: string
+  git_repo: string
+  git_branch: string
+  git_commit?: string
+  image_name: string
+  image_tag: string
+  image_digest?: string
+  image: string
+  pipeline_run_name?: string
+  status: string
+  created_by: string
+  created_at: string
+  finished_at?: string
+  error_message?: string
 }
 
 export interface Release {
@@ -35,6 +56,7 @@ export interface Release {
   deploy_status: string
   deploy_user: string
   source_release_id?: number
+  build_version_id?: number
   created_at: string
   finished_at?: string
   error_message?: string

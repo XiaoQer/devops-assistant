@@ -36,19 +36,24 @@
           <template v-if="deployDialog">
             <section class="deploy-plan-stack">
               <div class="deploy-selector surface-soft-card">
+                <label>选择构建版本</label>
+                <el-select v-model="deployBuildVersionId" placeholder="请选择已构建版本" style="width: 100%" @change="loadDeployPlan">
+                  <el-option v-for="build in buildVersions.filter(item => item.status === 'Succeeded')" :key="build.id" :label="`${build.version} · ${build.image_tag}`" :value="build.id" />
+                </el-select>
                 <label>Deploy target environment</label>
                 <el-select v-model="deployEnvironment" placeholder="请选择要部署的环境" style="width: 100%" @change="loadDeployPlan">
                   <el-option v-for="env in environmentOptions" :key="env" :label="env.toUpperCase()" :value="env" />
                 </el-select>
-                <p>查看页面状态使用的环境，不会自动作为发布目标。发布前必须在这里显式确认一次。</p>
+                <p>本次发布只部署已构建镜像，不会重复执行源码构建。</p>
               </div>
 
               <EmptyState
-                v-if="!deployEnvironment && !loadingPlan"
-                title="先选择发布环境"
-                description="例如 dev / test / staging / prod。选择后平台会生成对应的发布计划与风险检查结果。"
+                v-if="!buildVersions.some(item => item.status === 'Succeeded') && !loadingPlan"
+                title="暂无可发布构建版本"
+                description="请先构建一个成功版本，再选择环境进行发布。"
                 icon="⇢"
               />
+              <EmptyState v-else-if="!deployEnvironment && !loadingPlan" title="选择目标环境" description="选择已构建版本和目标环境后，平台会生成部署计划与风险检查结果。" icon="⇢" />
 
               <template v-else-if="deployPlan">
               <div class="deploy-summary" :class="`risk-${deployPlan.risk_level}`">
@@ -119,7 +124,18 @@
                 <h3>构建与部署执行</h3>
                 <p>中央 Tekton PipelineRun 及其交付状态</p>
               </div>
-              <el-button type="primary" @click="openDeployPlan">新建发布</el-button>
+              <div class="pipeline-panel-actions">
+                <el-button :loading="building" @click="buildNow">构建新版本</el-button>
+                <el-button type="primary" @click="openDeployPlan">发布已有版本</el-button>
+              </div>
+            </div>
+            <div v-if="buildVersions.length" class="build-version-list">
+              <div class="build-version-head"><strong>可发布构建版本</strong><span>{{ buildVersions.length }} versions</span></div>
+              <article v-for="build in buildVersions.slice(0, 4)" :key="build.id" class="build-version-item">
+                <div><b>{{ build.version }}</b><small>{{ build.image }} · {{ build.git_branch }} · {{ format(build.created_at) }}</small></div>
+                <StatusBadge :status="build.status" />
+                <el-button v-if="build.status === 'Succeeded'" text @click="openDeployPlan(build.id)">发布</el-button>
+              </article>
             </div>
             <div v-if="executions.length" class="pipeline-list">
               <article v-for="(run, index) in executions" :key="run.pipeline_run_name" class="pipeline-item">
@@ -157,6 +173,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { applicationApi } from '../api/application'
 import type {
   Application,
+  BuildVersion,
   ApplicationEnvironment,
   DeploymentPlan,
   Execution,
@@ -177,6 +194,7 @@ const route = useRoute()
 const router = useRouter()
 const app = ref<Application>()
 const executions = ref<Execution[]>([])
+const buildVersions = ref<BuildVersion[]>([])
 const releases = ref<Release[]>([])
 const runtime = ref<RuntimeStatus>()
 const environmentRecords = ref<ApplicationEnvironment[]>([])
@@ -185,9 +203,11 @@ const environment = ref('dev')
 const loadingApp = ref(true)
 const loadingRuntime = ref(false)
 const deploying = ref(false)
+const building = ref(false)
 const deployDialog = ref(false)
 const loadingPlan = ref(false)
 const deployEnvironment = ref('')
+const deployBuildVersionId = ref<number>()
 const deployPlan = ref<DeploymentPlan>()
 const rollbackId = ref(0)
 const environmentOptions = computed(() => environmentRecords.value.map(item => item.environment_name))
@@ -201,14 +221,16 @@ async function load() {
   loadingApp.value = true
   try {
     const id = Number(route.params.id)
-    const [application, executionItems, envItems] = await Promise.all([
+    const [application, executionItems, envItems, buildItems] = await Promise.all([
       applicationApi.get(projectId.value, id),
       applicationApi.executions(projectId.value, id),
       applicationApi.environments(projectId.value, id),
+      applicationApi.buildVersions(projectId.value, id),
     ])
     app.value = application
     executions.value = executionItems
     environmentRecords.value = envItems
+    buildVersions.value = buildItems
     if (!environmentOptions.value.includes(environment.value)) {
       environment.value = environmentOptions.value[0] || 'dev'
     }
@@ -240,14 +262,28 @@ async function loadEnvironment() {
   ])
 }
 
-async function openDeployPlan() {
+async function openDeployPlan(versionId?: number) {
   deployDialog.value = true
   deployEnvironment.value = ''
+  deployBuildVersionId.value = versionId || buildVersions.value.find(item => item.status === 'Succeeded')?.id
   deployPlan.value = undefined
 }
 
+async function buildNow() {
+  building.value = true
+  try {
+    const build = await applicationApi.build(projectId.value, Number(route.params.id))
+    buildVersions.value = [build, ...buildVersions.value]
+    ElMessage.success(`构建已提交：${build.version}`)
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    building.value = false
+  }
+}
+
 async function loadDeployPlan() {
-  if (!deployEnvironment.value) {
+  if (!deployEnvironment.value || !deployBuildVersionId.value) {
     deployPlan.value = undefined
     return
   }
@@ -256,6 +292,7 @@ async function loadDeployPlan() {
   try {
     deployPlan.value = await applicationApi.deployPlan(projectId.value, Number(route.params.id), {
       environment: deployEnvironment.value,
+      build_version_id: deployBuildVersionId.value,
     })
   } catch (error) {
     ElMessage.error((error as Error).message)
@@ -265,10 +302,13 @@ async function loadDeployPlan() {
 }
 
 async function confirmDeploy() {
-  if (!deployEnvironment.value || !deployPlan.value?.can_deploy) return
+  if (!deployEnvironment.value || !deployBuildVersionId.value || !deployPlan.value?.can_deploy) return
   deploying.value = true
   try {
-    const run = await applicationApi.deploy(projectId.value, Number(route.params.id), { environment: deployEnvironment.value })
+    const run = await applicationApi.deploy(projectId.value, Number(route.params.id), {
+      environment: deployEnvironment.value,
+      build_version_id: deployBuildVersionId.value,
+    })
     deployDialog.value = false
     environment.value = deployEnvironment.value
     if (run.approval_required) {
@@ -402,6 +442,71 @@ onMounted(load)
 .pipeline-panel,
 .log-guide {
   overflow: hidden;
+}
+
+.pipeline-panel-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.build-version-list {
+  margin: 0 18px;
+  padding: 14px 0 6px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.build-version-head,
+.build-version-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.build-version-head {
+  justify-content: space-between;
+  padding: 0 10px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.build-version-head strong {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.build-version-item {
+  min-height: 52px;
+  padding: 8px 10px;
+  border-radius: 9px;
+}
+
+.build-version-item:hover {
+  background: var(--surface-soft);
+}
+
+.build-version-item > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.build-version-item b,
+.build-version-item small {
+  display: block;
+}
+
+.build-version-item b {
+  color: var(--text-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.build-version-item small {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pipeline-list {
@@ -695,6 +800,10 @@ onMounted(load)
 
   .pipeline-item {
     align-items: flex-start;
+  }
+
+  .pipeline-panel-actions {
+    flex-wrap: wrap;
   }
 
   .pipeline-action {

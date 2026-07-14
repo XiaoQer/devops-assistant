@@ -19,6 +19,7 @@ class ReleaseService:
         release = ReleaseRecord(
             application_id=app.id,
             project_id=app.project_id,
+            build_version_id=payload.get("build_version_id"),
             release_type="deploy",
             environment=payload.get("environment", "dev"),
             git_repo=app.repo_url,

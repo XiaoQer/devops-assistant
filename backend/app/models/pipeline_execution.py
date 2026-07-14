@@ -9,6 +9,9 @@ class PipelineExecution(db.Model):
     application_id = db.Column(
         db.Integer, db.ForeignKey("applications.id"), nullable=False, index=True
     )
+    build_version_id = db.Column(
+        db.Integer, db.ForeignKey("application_build_versions.id"), nullable=True, index=True
+    )
     project_id = db.Column(
         db.Integer, db.ForeignKey("projects.id"), nullable=False, index=True
     )
@@ -35,6 +38,7 @@ class PipelineExecution(db.Model):
         return {
             "id": self.id,
             "application_id": self.application_id,
+            "build_version_id": self.build_version_id,
             "project_id": self.project_id,
             "environment": self.environment,
             "kubernetes_cluster_id": self.kubernetes_cluster_id,

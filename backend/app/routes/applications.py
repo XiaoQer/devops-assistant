@@ -7,6 +7,7 @@ from app.services.delivery_context_service import DeliveryContextService
 from app.services.deployment_plan_service import DeploymentPlanService
 from app.services.release_service import ReleaseService
 from app.services.approval_service import ApprovalService
+from app.services.build_version_service import BuildVersionService
 from app.services.project_service import ProjectService
 from app.utils.errors import ApiError
 from app.utils.response import success
@@ -91,6 +92,18 @@ def deploy_application(project_id, app_id):
     data = execution.to_dict()
     data["release"] = release.to_dict()
     return success(data, "PipelineRun 已创建", 201)
+
+
+@bp.get("/<int:app_id>/build-versions")
+def list_build_versions(project_id, app_id):
+    return success(BuildVersionService().list(get_application(project_id, app_id)))
+
+
+@bp.post("/<int:app_id>/build-versions")
+def create_build_version(project_id, app_id):
+    app = get_application(project_id, app_id)
+    version = ApplicationService().build(app, g.current_user.username)
+    return success(version.to_dict(), "构建已提交", 201)
 
 
 @bp.post("/<int:app_id>/deploy/plan")

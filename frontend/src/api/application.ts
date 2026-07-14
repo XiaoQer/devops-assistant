@@ -2,6 +2,7 @@ import { client } from './client'
 import type {
   Application, Execution, Release, RuntimeStatus,
   ApplicationEnvironment, ApplicationConfig, DeploymentPlan,
+  BuildVersion,
 } from '../types'
 
 export interface CreateApplicationInput {
@@ -19,17 +20,21 @@ export const applicationApi = {
     client.post<never, Application>(`/projects/${projectId}/applications`, input),
   deployPlan: (
     projectId: number, id: number,
-    options: { environment?: string; image_tag?: string; git_commit?: string } = {},
+    options: { environment?: string; build_version_id?: number; image_tag?: string; git_commit?: string } = {},
   ) => client.post<never, DeploymentPlan>(`/projects/${projectId}/applications/${id}/deploy/plan`, options),
   deploy: (
     projectId: number, id: number,
-    options: { environment?: string; image_tag?: string; git_commit?: string } = {},
+    options: { environment?: string; build_version_id?: number; image_tag?: string; git_commit?: string } = {},
   ) => client.post<never, Partial<Execution> & {
     approval_required?: boolean
     approval?: import('../types').Approval
   }>(`/projects/${projectId}/applications/${id}/deploy`, options),
   executions: (projectId: number, id: number) =>
     client.get<never, Execution[]>(`/projects/${projectId}/applications/${id}/executions`),
+  buildVersions: (projectId: number, id: number) =>
+    client.get<never, BuildVersion[]>(`/projects/${projectId}/applications/${id}/build-versions`),
+  build: (projectId: number, id: number) =>
+    client.post<never, BuildVersion>(`/projects/${projectId}/applications/${id}/build-versions`, {}),
   releases: (projectId: number, id: number, environment?: string) =>
     client.get<never, Release[]>(`/projects/${projectId}/applications/${id}/releases`, {
       params: { environment },

@@ -1,7 +1,9 @@
+from datetime import datetime, timezone
+from uuid import uuid4
 from flask import current_app
 
 from app.extensions import db
-from app.models import Application, PipelineExecution, ApplicationEnvironment
+from app.models import Application, PipelineExecution, ApplicationEnvironment, ApplicationBuildVersion
 from app.utils.errors import ApiError
 from .repo_analyzer_service import RepoAnalyzerService
 from .tekton_service import TektonService
@@ -13,6 +15,7 @@ from .registry_service import RegistryService
 from .delivery_context_service import DeliveryContextService
 from .kubernetes_cluster_service import KubernetesClusterService
 from .cluster_credential_materializer import ClusterCredentialMaterializer
+from .build_version_service import BuildVersionService
 
 
 class ApplicationService:
@@ -20,6 +23,16 @@ class ApplicationService:
         ("java", "maven"): "java-maven-kaniko-deploy",
         ("nodejs", "npm"): "node-npm-kaniko-deploy",
         ("dockerfile", "dockerfile"): "dockerfile-kaniko-deploy",
+    }
+    BUILD_PIPELINES = {
+        ("java", "maven"): "java-maven-kaniko-build",
+        ("nodejs", "npm"): "node-npm-kaniko-build",
+        ("dockerfile", "dockerfile"): "dockerfile-kaniko-build",
+    }
+    DEPLOY_PIPELINES = {
+        ("java", "maven"): "java-maven-deploy-only",
+        ("nodejs", "npm"): "node-npm-deploy-only",
+        ("dockerfile", "dockerfile"): "dockerfile-deploy-only",
     }
 
     def get(self, project_id, application_id):
@@ -66,6 +79,39 @@ class ApplicationService:
         EnvironmentService().list(app, ensure_defaults=True)
         return app
 
+    def build(self, app, build_user="local-user"):
+        pipeline = self.BUILD_PIPELINES.get((app.language, app.build_type))
+        if not pipeline:
+            raise ApiError(f"暂不支持 {app.language}/{app.build_type} 项目", 422, "UNSUPPORTED_BUILD_TYPE")
+        registry = RegistryService().get_project_default(app.project_id)
+        if not registry:
+            raise ApiError("项目尚未配置默认镜像仓库", 409, "REGISTRY_REQUIRED")
+        image_name = f"{registry.image_prefix}/{app.name}"
+        tag = f"build-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:6]}"
+        version = ApplicationBuildVersion(
+            application_id=app.id,
+            project_id=app.project_id,
+            version=tag,
+            git_repo=app.repo_url,
+            git_branch=app.branch,
+            image_name=image_name,
+            image_tag=tag,
+            created_by=build_user,
+        )
+        db.session.add(version)
+        db.session.flush()
+        tekton_namespace = current_app.config["TEKTON_NAMESPACE"]
+        central_kubernetes = KubernetesService()
+        registry_secret = ConfigurationService().materialize_build_registry(
+            registry, central_kubernetes, tekton_namespace
+        )
+        version.pipeline_run_name = TektonService().create_build_pipeline_run(
+            pipeline, app.name, app.repo_url, app.branch, image_name, tag,
+            tekton_namespace, registry_secret,
+        )
+        db.session.commit()
+        return version
+
     def deploy(self, app, payload=None, deploy_user="local-user"):
         payload = payload or {}
         environment_name = payload.get("environment", "dev")
@@ -79,7 +125,12 @@ class ApplicationService:
             ).first()
         if environment:
             payload.setdefault("namespace", environment.namespace)
-        pipeline = self.PIPELINES.get((app.language, app.build_type))
+        build_version = None
+        if payload.get("build_version_id"):
+            build_version = BuildVersionService().require_publishable(
+                app, int(payload["build_version_id"])
+            )
+        pipeline = self.DEPLOY_PIPELINES.get((app.language, app.build_type)) if build_version else self.PIPELINES.get((app.language, app.build_type))
         if not pipeline:
             raise ApiError(
                 f"暂不支持 {app.language}/{app.build_type} 项目",
@@ -87,9 +138,9 @@ class ApplicationService:
                 "UNSUPPORTED_BUILD_TYPE",
             )
         tekton_namespace = current_app.config["TEKTON_NAMESPACE"]
-        image_tag = payload.get("image_tag", app.image_tag)
+        image_tag = build_version.image_tag if build_version else payload.get("image_tag", app.image_tag)
         deploy_namespace = payload.get("namespace", app.namespace)
-        image_name = payload.get("image_name", app.image_name)
+        image_name = build_version.image_name if build_version else payload.get("image_name", app.image_name)
         registry = RegistryService().get_project_default(app.project_id)
         delivery_context = None
         try:
@@ -124,7 +175,8 @@ class ApplicationService:
         kube_context = ""
         if delivery_context:
             registry = delivery_context.registry
-            image_name = delivery_context.image_name
+            if not build_version:
+                image_name = delivery_context.image_name
             target_kubernetes = KubernetesClusterService().client(
                 delivery_context.cluster
             )
@@ -164,17 +216,28 @@ class ApplicationService:
                 **{key: value or "" for key, value in resources.items()},
             })
         payload["image_name"] = image_name
-        run_name = TektonService().create_pipeline_run(
-            pipeline, app.name, app.repo_url, app.branch, image_name,
-            image_tag, tekton_namespace, app.port,
-            deploy_namespace=deploy_namespace,
-            deployment_config=deployment_config,
-            kubeconfig_secret_name=kubeconfig_secret_name,
-            kube_context=kube_context,
-        )
+        payload["image_tag"] = image_tag
+        if build_version:
+            payload["build_version_id"] = build_version.id
+        if build_version:
+            run_name = TektonService().create_deploy_pipeline_run(
+                pipeline, app.name, image_name, image_tag, tekton_namespace,
+                deploy_namespace, app.port, deployment_config,
+                kubeconfig_secret_name, kube_context,
+            )
+        else:
+            run_name = TektonService().create_pipeline_run(
+                pipeline, app.name, app.repo_url, app.branch, image_name,
+                image_tag, tekton_namespace, app.port,
+                deploy_namespace=deploy_namespace,
+                deployment_config=deployment_config,
+                kubeconfig_secret_name=kubeconfig_secret_name,
+                kube_context=kube_context,
+            )
         execution = PipelineExecution(
             application_id=app.id,
             project_id=app.project_id,
+            build_version_id=build_version.id if build_version else None,
             environment=environment_name,
             kubernetes_cluster_id=(
                 environment.kubernetes_cluster_id if environment else None

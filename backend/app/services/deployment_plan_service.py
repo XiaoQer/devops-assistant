@@ -8,12 +8,16 @@ from app.utils.errors import ApiError
 from .application_service import ApplicationService
 from .delivery_context_service import DeliveryContextService
 from .environment_service import EnvironmentService
+from .build_version_service import BuildVersionService
 
 
 class DeploymentPlanService:
     def build_plan(self, app, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         payload = payload or {}
         environment_name = str(payload.get("environment", "dev") or "dev").strip().lower()
+        build_version = None
+        if payload.get("build_version_id"):
+            build_version = BuildVersionService().require_publishable(app, int(payload["build_version_id"]))
         environment = ApplicationEnvironment.query.filter_by(
             application_id=app.id, environment_name=environment_name
         ).first()
@@ -23,8 +27,9 @@ class DeploymentPlanService:
                 application_id=app.id, environment_name=environment_name
             ).first()
 
-        pipeline_name = ApplicationService.PIPELINES.get((app.language, app.build_type))
-        image_tag = str(payload.get("image_tag", app.image_tag) or app.image_tag)
+        pipeline_map = ApplicationService.DEPLOY_PIPELINES if build_version else ApplicationService.PIPELINES
+        pipeline_name = pipeline_map.get((app.language, app.build_type))
+        image_tag = build_version.image_tag if build_version else str(payload.get("image_tag", app.image_tag) or app.image_tag)
         project = Project.query.filter_by(id=app.project_id).first()
         context = None
         context_error = None
@@ -35,7 +40,7 @@ class DeploymentPlanService:
                 )
             except ApiError as exc:
                 context_error = exc
-        image_name = context.image_name if context else app.image_name
+        image_name = build_version.image_name if build_version else (context.image_name if context else app.image_name)
 
         checks: list[dict[str, str]] = []
 
@@ -220,6 +225,7 @@ class DeploymentPlanService:
                 "application_id": app.id,
                 "application_name": app.name,
                 "environment": environment_name,
+                "build_version": build_version.to_dict() if build_version else None,
                 "namespace": environment.namespace if environment else payload.get("namespace", app.namespace),
                 "image_name": image_name,
                 "image_tag": image_tag,

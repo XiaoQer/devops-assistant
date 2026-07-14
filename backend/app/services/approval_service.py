@@ -4,6 +4,7 @@ from app.extensions import db
 from app.models import ApprovalRecord, ApplicationEnvironment
 from app.utils.errors import ApiError
 from .application_service import ApplicationService
+from .build_version_service import BuildVersionService
 
 
 class ApprovalService:
@@ -14,11 +15,16 @@ class ApprovalService:
         ).first()
         if not environment:
             raise ApiError("目标环境不存在", 404, "ENVIRONMENT_NOT_FOUND")
+        build_version = None
+        if payload.get("build_version_id"):
+            build_version = BuildVersionService().require_publishable(app, int(payload["build_version_id"]))
+        image_tag = build_version.image_tag if build_version else payload.get("image_tag", app.image_tag)
+        image_name = build_version.image_name if build_version else app.image_name
         duplicate = ApprovalRecord.query.filter_by(
             application_id=app.id,
             project_id=app.project_id,
             environment=environment_name,
-            image_tag=payload.get("image_tag", app.image_tag),
+            image_tag=image_tag,
             status="Pending",
         ).first()
         if duplicate:
@@ -28,8 +34,9 @@ class ApprovalService:
             project_id=app.project_id,
             environment=environment_name,
             namespace=environment.namespace,
-            image_name=app.image_name,
-            image_tag=payload.get("image_tag", app.image_tag),
+            build_version_id=build_version.id if build_version else None,
+            image_name=image_name,
+            image_tag=image_tag,
             git_branch=payload.get("git_branch", app.branch),
             git_commit=payload.get("git_commit"),
             applicant=applicant,
@@ -48,6 +55,7 @@ class ApprovalService:
                 "environment": approval.environment,
                 "namespace": approval.namespace,
                 "image_tag": approval.image_tag,
+                "build_version_id": approval.build_version_id,
                 "git_branch": approval.git_branch,
                 "git_commit": approval.git_commit,
             },

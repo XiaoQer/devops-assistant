@@ -88,6 +88,75 @@ class TektonService:
         )
         return result["metadata"]["name"]
 
+    def create_build_pipeline_run(
+        self, pipeline_name, app_name, repo_url, branch, image_name, image_tag,
+        namespace, registry_secret_name="",
+    ):
+        body = {
+            "apiVersion": "tekton.dev/v1",
+            "kind": "PipelineRun",
+            "metadata": {
+                "generateName": f"{app_name}-build-",
+                "namespace": namespace,
+                "labels": {
+                    "app.kubernetes.io/name": app_name,
+                    "aegis.dev/pipeline-type": "build",
+                },
+            },
+            "spec": {
+                "taskRunTemplate": {
+                    "serviceAccountName": "devops-platform-pipeline",
+                    "podTemplate": {"volumes": [{
+                        "name": "docker-config",
+                        "secret": {"secretName": registry_secret_name or "registry-credentials", "optional": not bool(registry_secret_name), "items": [{"key": ".dockerconfigjson", "path": "config.json"}]},
+                    }]},
+                },
+                "pipelineRef": {"name": pipeline_name},
+                "workspaces": [{"name": "source", "volumeClaimTemplate": {"spec": {"accessModes": ["ReadWriteOnce"], "resources": {"requests": {"storage": "1Gi"}}}}}],
+                "params": [
+                    {"name": "repo_url", "value": repo_url},
+                    {"name": "branch", "value": branch},
+                    {"name": "image", "value": f"{image_name}:{image_tag}"},
+                ],
+            },
+        }
+        result = self.custom_api.create_namespaced_custom_object(self.GROUP, self.VERSION, namespace, "pipelineruns", body)
+        return result["metadata"]["name"]
+
+    def create_deploy_pipeline_run(
+        self, pipeline_name, app_name, image_name, image_tag, namespace,
+        deploy_namespace, container_port, deployment_config=None,
+        kubeconfig_secret_name="", kube_context="",
+    ):
+        deployment_config = deployment_config or {}
+        params = [
+            {"name": "image", "value": f"{image_name}:{image_tag}"},
+            {"name": "app", "value": app_name},
+            {"name": "namespace", "value": deploy_namespace},
+            {"name": "port", "value": str(container_port)},
+            {"name": "replicas", "value": str(deployment_config.get("replicas", 1))},
+            {"name": "cpu_request", "value": deployment_config.get("cpu_request", "100m")},
+            {"name": "cpu_limit", "value": deployment_config.get("cpu_limit", "500m")},
+            {"name": "memory_request", "value": deployment_config.get("memory_request", "128Mi")},
+            {"name": "memory_limit", "value": deployment_config.get("memory_limit", "512Mi")},
+            {"name": "deploy_strategy", "value": deployment_config.get("deploy_strategy", "RollingUpdate")},
+            {"name": "max_unavailable", "value": deployment_config.get("max_unavailable", "25%")},
+            {"name": "max_surge", "value": deployment_config.get("max_surge", "25%")},
+            {"name": "ingress_host", "value": deployment_config.get("ingress_host", "")},
+            {"name": "config_map_name", "value": deployment_config.get("config_map_name", f"{app_name}-config")},
+            {"name": "secret_name", "value": deployment_config.get("secret_name", f"{app_name}-secret")},
+            {"name": "registry_secret_name", "value": deployment_config.get("registry_secret_name", "")},
+            {"name": "kubeconfig_secret_name", "value": kubeconfig_secret_name},
+            {"name": "kube_context", "value": kube_context},
+        ]
+        body = {
+            "apiVersion": "tekton.dev/v1", "kind": "PipelineRun",
+            "metadata": {"generateName": f"{app_name}-deploy-", "namespace": namespace, "labels": {"app.kubernetes.io/name": app_name, "aegis.dev/pipeline-type": "deploy"}},
+            "spec": {"taskRunTemplate": {"serviceAccountName": "devops-platform-pipeline"}, "pipelineRef": {"name": pipeline_name}, "params": params},
+        }
+        result = self.custom_api.create_namespaced_custom_object(self.GROUP, self.VERSION, namespace, "pipelineruns", body)
+        return result["metadata"]["name"]
+
     def get_pipeline_run_status(self, pipeline_run_name, namespace):
         run = self.custom_api.get_namespaced_custom_object(
             self.GROUP, self.VERSION, namespace, "pipelineruns", pipeline_run_name

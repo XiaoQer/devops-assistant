@@ -32,6 +32,12 @@ class Application(db.Model):
         cascade="all, delete-orphan",
         order_by="PipelineExecution.created_at.desc()",
     )
+    build_versions = db.relationship(
+        "ApplicationBuildVersion",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="ApplicationBuildVersion.created_at.desc()",
+    )
     releases = db.relationship(
         "ReleaseRecord",
         back_populates="application",
@@ -86,6 +92,9 @@ class Application(db.Model):
             "updated_at": self.updated_at.isoformat(),
             "latest_execution": (
                 latest_execution.to_dict() if latest_execution else None
+            ),
+            "latest_build_version": (
+                self.build_versions[0].to_dict() if self.build_versions else None
             ),
         }
         if include_spec:

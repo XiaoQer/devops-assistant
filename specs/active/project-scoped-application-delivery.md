@@ -62,6 +62,7 @@ deploy Task 挂载该 Secret，并显式选择 Environment 保存的 kube contex
 - 包含：前端所有 Application、Pipeline、Release、Approval 和 Runtime 导航保持当前
   Project 上下文。
 - 包含：发布计划展示目标集群、Namespace、Registry、连接状态和阻塞原因。
+- 包含：构建版本与发布解耦，Build Pipeline 只构建镜像，Deploy-only Pipeline 使用已成功构建版本向 Environment Promotion。
 
 ## 非目标
 
@@ -72,6 +73,7 @@ deploy Task 挂载该 Secret，并显式选择 Environment 保存的 kube contex
 - 不包含 Project GitHub Organization、Team 或 Repo Group 对仓库地址的强制校验。
 - 不包含 pnpm、yarn 或其他新的流水线模板。
 - 不包含 Application AI 分析、修复或发布建议能力。
+- 不包含构建产物跨 Application 复用；构建版本仍限定在单个 Application 内。
 - 不删除历史 Default Project 或平台级 Registry 数据，但新的 Application 交付不再回退
   使用这些资源。
 
@@ -100,6 +102,8 @@ deploy Task 挂载该 Secret，并显式选择 Environment 保存的 kube contex
 - [x] Alembic migration 能升级和降级，历史记录的 Project 与交付目标关联得到保留。
 - [x] 后端相关自动化检查、前端类型检查、生产构建和 `./scripts/verify.sh` 全部通过。
 - [x] `docs/current-state.md` 在实现并验证完成后反映最终能力和已知缺口。
+- [ ] 构建版本只创建 Build PipelineRun；发布已有构建版本时只创建 Deploy-only PipelineRun，且同一版本可发布到多个 Environment。
+- [ ] 生产审批记录具体 `build_version_id`，审批通过后不重复执行构建。
 
 ## 设计说明
 

@@ -141,6 +141,22 @@ def release_batch_detail(project_id, app_id, batch_id):
     return success(DeliveryReconciler().reconcile_batch(batch.id))
 
 
+@bp.post("/<int:app_id>/release-batches/<int:batch_id>/targets")
+def add_release_batch_targets(project_id, app_id, batch_id):
+    payload = json_object(request.get_json(silent=True), required=True)
+    app = get_application(project_id, app_id)
+    batch = ReleaseBatchService().add_targets(
+        app,
+        batch_id,
+        payload.get("environment_ids"),
+    )
+    return success(
+        DeliveryReconciler().reconcile_batch(batch.id),
+        "发布环境已追加",
+        201,
+    )
+
+
 @bp.post("/<int:app_id>/build-versions")
 def create_build_version(project_id, app_id):
     app = get_application(project_id, app_id)

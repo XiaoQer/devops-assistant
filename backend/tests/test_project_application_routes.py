@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import create_app
@@ -209,6 +210,53 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
             ),
             "APPROVAL_NOT_FOUND",
         )
+
+    @patch("app.routes.applications.DeliveryReconciler")
+    @patch("app.routes.applications.ReleaseBatchService.add_targets")
+    def test_append_release_targets_delegates_and_reconciles(
+        self, add_targets, reconciler
+    ):
+        add_targets.return_value = SimpleNamespace(id=42)
+        reconciler.return_value.reconcile_batch.return_value = {
+            "id": 42,
+            "targets": [{"environment_id": self.environment.id}],
+        }
+
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}/release-batches/42/targets",
+            self.csrf_token,
+            json={"environment_ids": [self.environment.id]},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        body = response.get_json()
+        self.assertTrue(body["success"])
+        self.assertTrue(body["timestamp"])
+        self.assertTrue(body["trace_id"])
+        self.assertEqual(body["data"]["id"], 42)
+        add_targets.assert_called_once_with(
+            self.application, 42, [self.environment.id]
+        )
+        reconciler.return_value.reconcile_batch.assert_called_once_with(42)
+
+    @patch("app.routes.applications.DeliveryReconciler")
+    @patch("app.routes.applications.ReleaseBatchService.add_targets")
+    def test_append_release_targets_hides_cross_project_application(
+        self, add_targets, reconciler
+    ):
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_b.id}/applications/"
+            f"{self.application.id}/release-batches/42/targets",
+            self.csrf_token,
+            json={"environment_ids": [self.environment.id]},
+        )
+
+        self.assert_not_found(response, "APPLICATION_NOT_FOUND")
+        add_targets.assert_not_called()
+        reconciler.assert_not_called()
 
     @patch("app.routes.pipelines.TektonService")
     def test_pipeline_logs_and_retry_deny_cross_project_before_tekton(self, tekton):

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BuildVersion, PipelineLogDetails } from '../../types'
 import {
+  buildExplorerPath,
   defaultStepId,
   normalizeBuildSteps,
   selectRequestedBuild,
@@ -44,6 +45,12 @@ const logDetails: PipelineLogDetails = {
 }
 
 describe('build explorer state', () => {
+  it('builds a stable deep link for an application build', () => {
+    expect(buildExplorerPath(7, 12, 42)).toBe(
+      '/devcenter/projects/7/pipelines/applications/12/builds/42',
+    )
+  })
+
   it('selects the latest build when no id is requested', () => {
     expect(selectRequestedBuild([build(42), build(41)], undefined).build?.id).toBe(42)
   })

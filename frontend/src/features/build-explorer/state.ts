@@ -9,6 +9,10 @@ export interface BuildStepDetail {
   logs: string
 }
 
+export function buildExplorerPath(projectId: number, applicationId: number, buildId: number) {
+  return `/devcenter/projects/${projectId}/pipelines/applications/${applicationId}/builds/${buildId}`
+}
+
 export function selectRequestedBuild(builds: BuildVersion[], requestedId?: number) {
   if (requestedId === undefined) {
     return { build: builds[0], invalidRequestedId: false }

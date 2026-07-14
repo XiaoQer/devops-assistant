@@ -109,6 +109,11 @@ const router = createRouter({
           meta: { title: 'Pipelines' },
         },
         {
+          path: 'projects/:projectId/pipelines/applications/:applicationId/builds/:buildId?',
+          component: () => import('../views/ApplicationBuildExplorer.vue'),
+          meta: { title: 'Application builds' },
+        },
+        {
           path: 'projects/:projectId/pipelines/:name',
           component: () => import('../views/PipelineDetail.vue'),
           meta: { title: 'Pipeline detail' },

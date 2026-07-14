@@ -284,6 +284,27 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
         self.assertNotIn(inconsistent.id, [item["id"] for item in project_b_center])
         self.assert_not_found(detail, "PIPELINE_EXECUTION_NOT_FOUND")
 
+    def test_application_serialization_ignores_inconsistent_latest_execution(self):
+        inconsistent = PipelineExecution(
+            application_id=self.application.id,
+            project_id=self.project_b.id,
+            environment="dev",
+            deploy_namespace="payments-dev",
+            pipeline_run_name="payments-run-leaked-latest",
+        )
+        db.session.add(inconsistent)
+        db.session.commit()
+
+        list_item = self.client.get(
+            f"/api/projects/{self.project_a.id}/applications"
+        ).get_json()["data"][0]
+        detail = self.client.get(
+            f"/api/projects/{self.project_a.id}/applications/{self.application.id}"
+        ).get_json()["data"]
+
+        self.assertEqual(list_item["latest_execution"]["id"], self.execution.id)
+        self.assertEqual(detail["latest_execution"]["id"], self.execution.id)
+
     def create_inconsistent_approval(self, image_tag):
         approval = ApprovalRecord(
             application_id=self.application.id,
@@ -354,6 +375,25 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
         self.assert_not_found(response, "APPROVAL_NOT_FOUND")
         reject.assert_not_called()
         deploy.assert_not_called()
+
+    def test_approval_submission_ignores_inconsistent_duplicate(self):
+        inconsistent = self.create_inconsistent_approval("duplicate-tag")
+
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_a.id}/approvals",
+            self.csrf_token,
+            json={
+                "application_id": self.application.id,
+                "environment": "dev",
+                "image_tag": "duplicate-tag",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        created = response.get_json()["data"]
+        self.assertNotEqual(created["id"], inconsistent.id)
+        self.assertEqual(created["project_id"], self.project_a.id)
 
     @patch("app.services.release_service.TektonService")
     def test_project_release_center_synchronizes_only_owned_releases(self, tekton):
@@ -467,6 +507,63 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
         )
 
         self.assertEqual([item.id for item in items], [self.config.id])
+
+    def test_config_mutations_require_environment_to_belong_to_application(self):
+        other_application = Application(
+            project_id=self.project_b.id,
+            name="config-environment-owner",
+            repo_url="https://github.com/example/config-environment-owner.git",
+            branch="main",
+            language="nodejs",
+            framework="express",
+            build_type="npm",
+            namespace="config-owner-dev",
+            image_name="registry.local/config-owner",
+            image_tag="latest",
+            port=3000,
+        )
+        db.session.add(other_application)
+        db.session.flush()
+        other_environment = ApplicationEnvironment(
+            application_id=other_application.id,
+            environment_name="dev",
+            namespace="config-owner-dev",
+        )
+        db.session.add(other_environment)
+        db.session.flush()
+        malformed = []
+        for suffix in ("update", "delete", "history"):
+            malformed.append(ApplicationConfig(
+                config_group_id=f"malformed-{suffix}",
+                application_id=self.application.id,
+                environment_id=other_environment.id,
+                config_type="secret",
+                config_key=f"MALFORMED_{suffix.upper()}",
+                encrypted_value="ciphertext",
+                is_secret=True,
+            ))
+        db.session.add_all(malformed)
+        db.session.commit()
+
+        update = self.client.patch(
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}/configs/{malformed[0].id}",
+            headers={"X-CSRF-Token": self.csrf_token},
+            json={"value": "new-value"},
+        )
+        delete = self.client.delete(
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}/configs/{malformed[1].id}",
+            headers={"X-CSRF-Token": self.csrf_token},
+        )
+        history = self.client.get(
+            f"/api/projects/{self.project_a.id}/applications/"
+            f"{self.application.id}/configs/{malformed[2].config_group_id}/history"
+        )
+
+        self.assert_not_found(update, "CONFIG_NOT_FOUND")
+        self.assert_not_found(delete, "CONFIG_NOT_FOUND")
+        self.assert_not_found(history, "CONFIG_NOT_FOUND")
 
     def test_config_list_rejects_environment_from_another_project(self):
         other_application = Application(

@@ -41,6 +41,29 @@ def get_env(project_id, app_id, env_id):
     return environment
 
 
+def get_config(project_id, app_id, config_id):
+    item = (
+        ApplicationConfig.query.join(
+            Application,
+            ApplicationConfig.application_id == Application.id,
+        )
+        .join(
+            ApplicationEnvironment,
+            ApplicationConfig.environment_id == ApplicationEnvironment.id,
+        )
+        .filter(
+            ApplicationConfig.id == config_id,
+            ApplicationConfig.application_id == app_id,
+            ApplicationEnvironment.application_id == app_id,
+            Application.project_id == project_id,
+        )
+        .first()
+    )
+    if not item:
+        raise ApiError("配置不存在", 404, "CONFIG_NOT_FOUND")
+    return item
+
+
 @bp.get("/<int:app_id>/environments")
 def list_environments(project_id, app_id):
     items = EnvironmentService().list(get_app(project_id, app_id))
@@ -127,17 +150,7 @@ def create_config(project_id, app_id):
 @bp.patch("/<int:app_id>/configs/<int:config_id>")
 def update_config(project_id, app_id, config_id):
     get_app(project_id, app_id)
-    item = (
-        ApplicationConfig.query.join(Application)
-        .filter(
-            ApplicationConfig.id == config_id,
-            ApplicationConfig.application_id == app_id,
-            Application.project_id == project_id,
-        )
-        .first()
-    )
-    if not item:
-        raise ApiError("配置不存在", 404, "CONFIG_NOT_FOUND")
+    item = get_config(project_id, app_id, config_id)
     service = ConfigurationService()
     updated = service.update(
         item, json_object(request.get_json(silent=True), required=True),
@@ -149,17 +162,7 @@ def update_config(project_id, app_id, config_id):
 @bp.delete("/<int:app_id>/configs/<int:config_id>")
 def delete_config(project_id, app_id, config_id):
     get_app(project_id, app_id)
-    item = (
-        ApplicationConfig.query.join(Application)
-        .filter(
-            ApplicationConfig.id == config_id,
-            ApplicationConfig.application_id == app_id,
-            Application.project_id == project_id,
-        )
-        .first()
-    )
-    if not item:
-        raise ApiError("配置不存在", 404, "CONFIG_NOT_FOUND")
+    item = get_config(project_id, app_id, config_id)
     ConfigurationService().delete(item)
     return success(None, "配置已删除")
 

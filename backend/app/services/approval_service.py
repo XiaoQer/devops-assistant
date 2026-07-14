@@ -16,6 +16,7 @@ class ApprovalService:
             raise ApiError("目标环境不存在", 404, "ENVIRONMENT_NOT_FOUND")
         duplicate = ApprovalRecord.query.filter_by(
             application_id=app.id,
+            project_id=app.project_id,
             environment=environment_name,
             image_tag=payload.get("image_tag", app.image_tag),
             status="Pending",
@@ -69,4 +70,3 @@ class ApprovalService:
         approval.rejected_at = datetime.now(timezone.utc)
         db.session.commit()
         return approval
-

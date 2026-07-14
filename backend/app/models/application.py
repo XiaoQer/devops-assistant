@@ -58,6 +58,14 @@ class Application(db.Model):
     )
 
     def to_dict(self, include_spec=True):
+        latest_execution = next(
+            (
+                execution
+                for execution in self.executions
+                if execution.project_id == self.project_id
+            ),
+            None,
+        )
         data = {
             "id": self.id,
             "project_id": self.project_id,
@@ -76,7 +84,9 @@ class Application(db.Model):
             "status": self.status,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
-            "latest_execution": self.executions[0].to_dict() if self.executions else None,
+            "latest_execution": (
+                latest_execution.to_dict() if latest_execution else None
+            ),
         }
         if include_spec:
             data["application_spec"] = self.application_spec

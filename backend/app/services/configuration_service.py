@@ -5,7 +5,7 @@ from cryptography.fernet import Fernet
 from flask import current_app
 
 from app.extensions import db
-from app.models import ApplicationConfig
+from app.models import ApplicationConfig, ApplicationEnvironment
 from app.utils.errors import ApiError
 
 
@@ -74,10 +74,19 @@ class ConfigurationService:
         return item
 
     def history(self, app_id, config_group_id):
-        return ApplicationConfig.query.filter_by(
-            application_id=app_id,
-            config_group_id=config_group_id,
-        ).order_by(ApplicationConfig.version.desc()).all()
+        return (
+            ApplicationConfig.query.join(
+                ApplicationEnvironment,
+                ApplicationConfig.environment_id == ApplicationEnvironment.id,
+            )
+            .filter(
+                ApplicationConfig.application_id == app_id,
+                ApplicationEnvironment.application_id == app_id,
+                ApplicationConfig.config_group_id == config_group_id,
+            )
+            .order_by(ApplicationConfig.version.desc())
+            .all()
+        )
 
     def delete(self, item):
         item.is_active = False

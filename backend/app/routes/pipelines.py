@@ -2,6 +2,7 @@ from flask import Blueprint, current_app, request
 
 from app.extensions import db
 from app.models import Application, ApplicationBuildVersion, ApplicationReleaseBatch, ApplicationReleaseTarget, PipelineExecution
+from app.services.cicd_workbench_service import CicdWorkbenchService
 from app.services.delivery_reconciler import DeliveryReconciler
 from app.services.project_service import ProjectService
 from app.services.tekton_service import TektonService
@@ -72,6 +73,18 @@ def list_pipelines(project_id):
         "page": page,
         "pageSize": page_size,
         "total": pagination.total,
+    })
+
+
+@bp.get("/workbench")
+def workbench(project_id):
+    ProjectService().get(project_id)
+    return success({
+        "items": CicdWorkbenchService().list_applications(
+            project_id,
+            query=request.args.get("query", "").strip() or None,
+            status=request.args.get("status", "").strip() or None,
+        )
     })
 
 

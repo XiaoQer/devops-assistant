@@ -211,6 +211,37 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
             "APPROVAL_NOT_FOUND",
         )
 
+    @patch("app.routes.pipelines.CicdWorkbenchService")
+    def test_cicd_workbench_is_project_scoped_and_forwards_filters(self, workbench):
+        workbench.return_value.list_applications.return_value = [{
+            "application": {"id": self.application.id, "name": "payments"},
+            "activity_status": "Running",
+        }]
+
+        response = self.client.get(
+            f"/api/projects/{self.project_a.id}/pipelines/workbench"
+            "?query=pay&status=Running"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertTrue(body["success"])
+        self.assertTrue(body["timestamp"])
+        self.assertTrue(body["trace_id"])
+        self.assertEqual(body["data"]["items"][0]["application"]["name"], "payments")
+        workbench.return_value.list_applications.assert_called_once_with(
+            self.project_a.id,
+            query="pay",
+            status="Running",
+        )
+
+    @patch("app.routes.pipelines.CicdWorkbenchService")
+    def test_cicd_workbench_rejects_missing_project(self, workbench):
+        response = self.client.get("/api/projects/99999/pipelines/workbench")
+
+        self.assert_not_found(response, "PROJECT_NOT_FOUND")
+        workbench.assert_not_called()
+
     @patch("app.routes.applications.DeliveryReconciler")
     @patch("app.routes.applications.ReleaseBatchService.add_targets")
     def test_append_release_targets_delegates_and_reconciles(

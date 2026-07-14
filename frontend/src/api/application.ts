@@ -45,6 +45,11 @@ export const applicationApi = {
     client.get<never, import('../types').ReleaseBatch[]>(`/projects/${projectId}/applications/${id}/release-batches`),
   releaseBatch: (projectId: number, id: number, batchId: number) =>
     client.get<never, import('../types').ReleaseBatch>(`/projects/${projectId}/applications/${id}/release-batches/${batchId}`),
+  addReleaseBatchTargets: (projectId: number, id: number, batchId: number, environmentIds: number[]) =>
+    client.post<never, import('../types').ReleaseBatch>(
+      `/projects/${projectId}/applications/${id}/release-batches/${batchId}/targets`,
+      { environment_ids: environmentIds },
+    ),
   releases: (projectId: number, id: number, environment?: string) =>
     client.get<never, Release[]>(`/projects/${projectId}/applications/${id}/releases`, {
       params: { environment },

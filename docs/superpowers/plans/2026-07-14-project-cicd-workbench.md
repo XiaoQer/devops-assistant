@@ -275,7 +275,7 @@ Props: `modelValue`, `projectId`, `application`, `batch`, `environments`. Requir
 
 - [ ] **Step 4: Run frontend type checking**
 
-Run: `cd frontend && npm run type-check`
+Run: `cd frontend && ./node_modules/.bin/vue-tsc -b`
 
 Expected: PASS with no TypeScript errors.
 
@@ -324,7 +324,7 @@ Add `{ name: 'CI/CD', path: `${base.value}/pipelines`, icon: '↯' }` to the Pro
 
 - [ ] **Step 6: Run production frontend checks**
 
-Run: `cd frontend && npm run type-check && npm run build`
+Run: `cd frontend && ./node_modules/.bin/vue-tsc -b && npm run build`
 
 Expected: both commands PASS; existing Rollup size/comment warnings are allowed.
 

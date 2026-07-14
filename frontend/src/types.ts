@@ -57,6 +57,16 @@ export interface ReleaseBatch {
   status: string; created_by: string; created_at: string; updated_at: string; targets: ReleaseTarget[]
 }
 
+export interface CicdWorkbenchItem {
+  application: Application
+  latest_build?: BuildVersion
+  latest_batch?: ReleaseBatch
+  latest_execution?: Execution
+  available_environments: ApplicationEnvironment[]
+  activity_status: string
+  last_activity_at?: string
+}
+
 export interface Release {
   id: number
   application_id?: number

@@ -1,7 +1,12 @@
 import { client } from './client'
-import type { PipelineRunSummary } from '../types'
+import type { CicdWorkbenchItem, PipelineRunSummary } from '../types'
 
 export const pipelineApi = {
+  workbench: (projectId: number, params: {query?:string;status?:string} = {}) =>
+    client.get<never, { items: CicdWorkbenchItem[] }>(
+      `/projects/${projectId}/pipelines/workbench`,
+      { params },
+    ),
   list: (projectId: number, params: {page:number;pageSize:number;status?:string;query?:string}) =>
     client.get<never, {
       items:PipelineRunSummary[]

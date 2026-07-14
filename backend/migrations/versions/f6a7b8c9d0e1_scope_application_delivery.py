@@ -85,19 +85,23 @@ def upgrade():
             ["id"],
         )
 
-    default_project_id = connection.execute(sa.text(
-        "SELECT id FROM projects WHERE `key` = 'default' LIMIT 1"
+    has_unscoped_application = connection.execute(sa.text(
+        "SELECT 1 FROM applications WHERE project_id IS NULL LIMIT 1"
     )).scalar()
-    if default_project_id is None:
-        raise RuntimeError("Default Project with key 'default' is required")
+    if has_unscoped_application:
+        default_project_id = connection.execute(sa.text(
+            "SELECT id FROM projects WHERE `key` = 'default' LIMIT 1"
+        )).scalar()
+        if default_project_id is None:
+            raise RuntimeError("Default Project with key 'default' is required")
 
-    connection.execute(
-        sa.text(
-            "UPDATE applications SET project_id = :project_id "
-            "WHERE project_id IS NULL"
-        ),
-        {"project_id": default_project_id},
-    )
+        connection.execute(
+            sa.text(
+                "UPDATE applications SET project_id = :project_id "
+                "WHERE project_id IS NULL"
+            ),
+            {"project_id": default_project_id},
+        )
     for table_name in (
         "pipeline_executions",
         "release_records",

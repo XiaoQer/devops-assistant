@@ -201,6 +201,101 @@ class ApplicationDeliveryMigrationTest(unittest.TestCase):
                 "approval": 40,
             })
 
+    def test_upgrade_without_default_project_when_applications_are_scoped(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "already-scoped.db"
+
+            class DatabaseConfig(TestConfig):
+                SQLALCHEMY_DATABASE_URI = f"sqlite:///{database_path}"
+
+            app = create_app(DatabaseConfig)
+            self.addCleanup(self._dispose_app_database, app)
+            alembic_config = AlembicConfig(str(BACKEND_DIR / "migrations/alembic.ini"))
+            alembic_config.set_main_option(
+                "script_location", str(BACKEND_DIR / "migrations")
+            )
+
+            with app.app_context():
+                db.session.execute(text(
+                    "CREATE TABLE projects ("
+                    "id INTEGER PRIMARY KEY, `key` VARCHAR(64) NOT NULL UNIQUE"
+                    ")"
+                ))
+                db.session.execute(text(
+                    "CREATE TABLE kubernetes_clusters (id INTEGER PRIMARY KEY)"
+                ))
+                db.session.execute(text(
+                    "CREATE TABLE applications ("
+                    "id INTEGER PRIMARY KEY, project_id INTEGER, "
+                    "FOREIGN KEY(project_id) REFERENCES projects(id)"
+                    ")"
+                ))
+                db.session.execute(text(
+                    "CREATE TABLE pipeline_executions ("
+                    "id INTEGER PRIMARY KEY, application_id INTEGER NOT NULL, "
+                    "FOREIGN KEY(application_id) REFERENCES applications(id)"
+                    ")"
+                ))
+                db.session.execute(text(
+                    "CREATE TABLE release_records ("
+                    "id INTEGER PRIMARY KEY, application_id INTEGER NOT NULL, "
+                    "project_id INTEGER, environment VARCHAR(30) NOT NULL, "
+                    "deploy_namespace VARCHAR(120) NOT NULL, "
+                    "FOREIGN KEY(application_id) REFERENCES applications(id), "
+                    "FOREIGN KEY(project_id) REFERENCES projects(id)"
+                    ")"
+                ))
+                db.session.execute(text(
+                    "CREATE TABLE approval_records ("
+                    "id INTEGER PRIMARY KEY, application_id INTEGER NOT NULL, "
+                    "project_id INTEGER, environment VARCHAR(30) NOT NULL, "
+                    "namespace VARCHAR(120) NOT NULL, "
+                    "FOREIGN KEY(application_id) REFERENCES applications(id), "
+                    "FOREIGN KEY(project_id) REFERENCES projects(id)"
+                    ")"
+                ))
+                db.session.execute(text(
+                    "INSERT INTO projects (id, `key`) VALUES (2, 'payments')"
+                ))
+                db.session.execute(text(
+                    "INSERT INTO applications (id, project_id) VALUES (10, 2)"
+                ))
+                db.session.execute(text(
+                    "INSERT INTO pipeline_executions (id, application_id) "
+                    "VALUES (20, 10)"
+                ))
+                db.session.execute(text(
+                    "INSERT INTO release_records "
+                    "(id, application_id, project_id, environment, deploy_namespace) "
+                    "VALUES (30, 10, NULL, 'prod', 'production')"
+                ))
+                db.session.execute(text(
+                    "INSERT INTO approval_records "
+                    "(id, application_id, project_id, environment, namespace) "
+                    "VALUES (40, 10, NULL, 'prod', 'production')"
+                ))
+                db.session.commit()
+                command.stamp(alembic_config, "e5f6a7b8c9d0")
+                command.upgrade(alembic_config, "f6a7b8c9d0e1")
+
+                application_project_id = db.session.execute(text(
+                    "SELECT project_id FROM applications WHERE id = 10"
+                )).scalar_one()
+                execution_project_id = db.session.execute(text(
+                    "SELECT project_id FROM pipeline_executions WHERE id = 20"
+                )).scalar_one()
+                release_project_id = db.session.execute(text(
+                    "SELECT project_id FROM release_records WHERE id = 30"
+                )).scalar_one()
+                approval_project_id = db.session.execute(text(
+                    "SELECT project_id FROM approval_records WHERE id = 40"
+                )).scalar_one()
+
+            self.assertEqual(application_project_id, 2)
+            self.assertEqual(execution_project_id, 2)
+            self.assertEqual(release_project_id, 2)
+            self.assertEqual(approval_project_id, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

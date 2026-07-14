@@ -29,8 +29,6 @@ spec:
           - {name: app}
           - {name: namespace}
           - {name: port}
-          - {name: namespace}
-          - {name: port}
           - {name: replicas}
           - {name: cpu_request}
           - {name: cpu_limit}

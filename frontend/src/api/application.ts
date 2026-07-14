@@ -33,6 +33,10 @@ export const applicationApi = {
     client.get<never, Execution[]>(`/projects/${projectId}/applications/${id}/executions`),
   buildVersions: (projectId: number, id: number) =>
     client.get<never, BuildVersion[]>(`/projects/${projectId}/applications/${id}/build-versions`),
+  buildVersion: (projectId: number, id: number, buildId: number) =>
+    client.get<never, BuildVersion>(
+      `/projects/${projectId}/applications/${id}/build-versions/${buildId}`,
+    ),
   build: (projectId: number, id: number) =>
     client.post<never, BuildVersion>(`/projects/${projectId}/applications/${id}/build-versions`, {}),
   gitBranches: (projectId: number, id: number) =>

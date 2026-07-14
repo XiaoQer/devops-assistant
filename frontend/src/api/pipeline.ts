@@ -1,5 +1,5 @@
 import { client } from './client'
-import type { CicdWorkbenchItem, PipelineRunSummary } from '../types'
+import type { CicdWorkbenchItem, PipelineLogDetails, PipelineRunSummary } from '../types'
 
 export const pipelineApi = {
   workbench: (projectId: number, params: {query?:string;status?:string} = {}) =>
@@ -21,24 +21,7 @@ export const pipelineApi = {
       batch?: import('../types').ReleaseBatch
     }>(`/projects/${projectId}/pipelines/${name}/flow`),
   logs: (projectId: number, name: string) =>
-    client.get<never, {
-      pipeline_run: string
-      status: string
-      reason: string
-      message?: string
-      started_at?: string
-      finished_at?: string
-      logs: string
-      tasks: Array<{
-        name: string
-        task_name: string
-        status: string
-        pod?: string
-        started_at?: string
-        finished_at?: string
-        steps: Array<{ step: string; container: string; logs: string }>
-      }>
-    }>(`/projects/${projectId}/pipelines/${name}/logs`),
+    client.get<never, PipelineLogDetails>(`/projects/${projectId}/pipelines/${name}/logs`),
   retry: (projectId: number, name: string) =>
     client.post<never, { name: string; retried_from: string }>(`/projects/${projectId}/pipelines/${name}/retry`),
 }

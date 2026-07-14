@@ -44,6 +44,33 @@ export interface BuildVersion {
   error_message?: string
 }
 
+export interface PipelineLogStep {
+  step: string
+  container: string
+  logs: string
+}
+
+export interface PipelineLogTask {
+  name: string
+  task_name: string
+  status: string
+  pod?: string
+  started_at?: string
+  finished_at?: string
+  steps: PipelineLogStep[]
+}
+
+export interface PipelineLogDetails {
+  pipeline_run: string
+  status: string
+  reason: string
+  message?: string
+  started_at?: string
+  finished_at?: string
+  logs: string
+  tasks: PipelineLogTask[]
+}
+
 export interface GitBranch { name: string; sha: string }
 export interface GitCommit { sha: string; message: string; author: string; authored_at: string }
 export interface ReleaseTarget {

@@ -44,6 +44,11 @@
 - 部署计划、Tekton PipelineRun 创建、重试、结构化状态和日志。
 - Application 构建版本与 Build once/Promote 流程：Build Pipeline 只构建并推送镜像，发布使用已成功构建版本执行 Deploy-only Pipeline；同一构建版本可连续发布到多个环境，生产发布审批关联具体构建版本。当前阶段以镜像 Tag 作为交付依据，Digest 采集延期。
 - Application 发布批次支持从公共 Git 仓库切换分支，读取最近 20 条提交，选择一个提交并多选环境；一次 Build Pipeline 产出构建版本，Delivery Reconciler 按环境 fan-out Deploy-only PipelineRun，复用同一镜像并独立记录环境状态，生产环境审批只阻断对应目标。当前 Reconciler 由批次和 Pipeline flow 请求触发，后台常驻调度延期。
+- Project 的 CI/CD 工作台以紧凑 Application 卡片汇总最近构建、发布批次、环境目标和
+  PipelineRun，可按服务或仓库搜索并按状态筛选。用户可从卡片选择默认分支、最近 20 条
+  Commit 和零个或多个环境：不选环境时只生成可复用构建版本，预选环境在构建成功后自动推进，
+  需要审批的环境继续等待批准；成功构建还可追加尚未关联的环境。工作台刷新只协调当前 Project
+  的活跃批次，并通过可恢复租约和 Release Target 标签防止并发重复部署。
 - 发布历史、回滚流程和交付状态同步。
 - Application Environment 已解析为 Project 交付上下文：环境由用户在 Application 工作区
   中显式创建、编辑和删除，不再自动补建 dev；已绑定且连接成功的 Kubernetes 集群作为唯一
@@ -66,12 +71,12 @@
 
 ## Harness 基线验证结果
 
-- `./scripts/verify.sh` 于 2026-07-13 执行成功。
-- 后端 178 个测试全部通过。
+- `./scripts/verify.sh` 于 2026-07-14 执行成功。
+- 后端 207 个测试全部通过。
 - 前端类型检查和生产构建通过。
-- 后端测试产生 68 条警告：24 条 Flask-SQLAlchemy `get_engine()` 弃用警告和
-  44 条 SQLAlchemy `Query.get()` 旧 API 警告。
-- 前端构建转换 1802 个模块并成功产出生产包；Rollup 报告 2 条依赖注释位置提示，
+- 后端测试产生 94 条警告，来自 Flask-SQLAlchemy `get_engine()` 弃用警告、
+  SQLAlchemy `Query.get()` 旧 API 警告及相关测试调用。
+- 前端构建转换 1808 个模块并成功产出生产包；Rollup 报告 2 条依赖注释位置提示，
   并报告一个超过 500 kB 的 JavaScript 分包。这些是构建警告，不是构建失败。
 - 独立的临时 SQLite 自动迁移测试完成 `f1a2b3c4d5e6` stamp、升级到
   `a7c8d9e0f1a2` 并降级回 `f1a2b3c4d5e6`；未对用户数据库执行降级。

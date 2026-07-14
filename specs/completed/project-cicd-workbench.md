@@ -1,6 +1,6 @@
 # 功能：Project CI/CD 工作台
 
-- 状态：已确认，待实现
+- 状态：已验收
 - 负责人：Codex
 - 创建日期：2026-07-14
 
@@ -73,30 +73,30 @@
 
 ## 验收条件
 
-- [ ] 给定一个包含多个 Application 的 Project，当用户打开 CI/CD 工作台时，则一次聚合加载
+- [x] 给定一个包含多个 Application 的 Project，当用户打开 CI/CD 工作台时，则一次聚合加载
       每个 Application 的最近交付摘要，并能搜索、筛选和按最近活动查看。
-- [ ] 给定某个 Application，当用户点击“构建”时，则默认分支和最新 Commit 被选中，并能
+- [x] 给定某个 Application，当用户点击“构建”时，则默认分支和最新 Commit 被选中，并能
       切换分支及选择该分支最近 20 条 Commit。
-- [ ] 给定用户未选择环境，当确认触发时，则只创建 Build Pipeline；构建成功后存在可发布的
+- [x] 给定用户未选择环境，当确认触发时，则只创建 Build Pipeline；构建成功后存在可发布的
       构建版本，且不会创建 Deploy-only Pipeline 或审批。
-- [ ] 给定用户选择一个或多个非审批环境，当 Build Pipeline 成功时，则每个环境自动创建独立
+- [x] 给定用户选择一个或多个非审批环境，当 Build Pipeline 成功时，则每个环境自动创建独立
       Deploy-only Pipeline，并复用同一构建版本和镜像。
-- [ ] 给定用户选择需要审批的环境，当 Build Pipeline 成功时，则该环境进入等待审批状态；
+- [x] 给定用户选择需要审批的环境，当 Build Pipeline 成功时，则该环境进入等待审批状态；
       只有审批通过后才创建 Deploy-only Pipeline。
-- [ ] 给定成功的构建版本，当用户追加尚未关联的环境时，则不重新构建并为新增环境创建交付
+- [x] 给定成功的构建版本，当用户追加尚未关联的环境时，则不重新构建并为新增环境创建交付
       目标；已有目标不能重复追加。
-- [ ] 给定 Build Pipeline 尚未成功，当用户尝试追加环境时，则服务端拒绝请求，且不会改变
+- [x] 给定 Build Pipeline 尚未成功，当用户尝试追加环境时，则服务端拒绝请求，且不会改变
       批次目标。
-- [ ] 给定同一批次包含多个环境，当一个环境部署失败时，则其他环境仍可独立推进，并可从工作台
+- [x] 给定同一批次包含多个环境，当一个环境部署失败时，则其他环境仍可独立推进，并可从工作台
       查看失败日志或重试允许重试的 PipelineRun。
-- [ ] 给定跨 Project 的 Application、环境、批次或 PipelineRun 标识，当用户请求工作台操作时，
+- [x] 给定跨 Project 的 Application、环境、批次或 PipelineRun 标识，当用户请求工作台操作时，
       则服务端拒绝越界访问。
-- [ ] 所有新增接口保持 `success`、`message`、`data`、`timestamp`、`trace_id` 响应结构，
+- [x] 所有新增接口保持 `success`、`message`、`data`、`timestamp`、`trace_id` 响应结构，
       且不返回 Registry 凭据、应用 Secret 或 kubeconfig。
-- [ ] 后端自动化测试覆盖纯构建、预选环境自动推进、审批环境、追加环境、重复环境、构建未完成、
+- [x] 后端自动化测试覆盖纯构建、预选环境自动推进、审批环境、追加环境、重复环境、构建未完成、
       无效 Commit 和跨 Project 校验。
-- [ ] 前端类型检查、生产构建和 `./scripts/verify.sh` 通过。
-- [ ] `docs/current-state.md` 只在能力实际完成后更新，并记录最终状态及已知缺口。
+- [x] 前端类型检查、生产构建和 `./scripts/verify.sh` 通过。
+- [x] `docs/current-state.md` 只在能力实际完成后更新，并记录最终状态及已知缺口。
 
 ## 设计说明
 
@@ -154,8 +154,14 @@ PipelineRun 当作唯一历史来源。
 
 ## 验证证据
 
-实现过程中补充自动化测试、`./scripts/verify.sh` 输出和必要的浏览器人工检查结果。
+- `backend/.venv/bin/python -m pytest -q tests/test_cicd_workbench_service.py tests/test_release_batch_service.py tests/test_project_application_routes.py tests/test_application_service.py tests/test_approval_service.py tests/test_tekton_service.py`：64 个聚焦测试通过。
+- 独立代码评审覆盖 Project 越界、敏感字段最小化、构建/批次匹配、终态、并发追加、Target
+  原子认领、租约恢复、旧 Worker 所有权丢失和多环境失败重试；最终无 Critical/Important 问题。
+- `./scripts/verify.sh` 于 2026-07-14 通过：后端 207 个测试通过；前端 Vue TypeScript 检查
+  和 Vite 生产构建通过，共转换 1808 个模块。
+- 产品设计阶段的浏览器交互草图由用户确认采用 Application 优先的紧凑卡片、侧边快速构建
+  和构建后追加环境方案。最终代码通过生产构建；未依赖在线 Kubernetes 集群执行单元检查。
 
 ## 完成
 
-验收后将状态改为“已验收”，记录日期，并把本文件移至 `specs/completed/`。
+验收日期：2026-07-14。

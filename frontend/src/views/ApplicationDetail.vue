@@ -134,6 +134,7 @@
               <article v-for="build in buildVersions.slice(0, 4)" :key="build.id" class="build-version-item">
                 <div><b>{{ build.version }}</b><small>{{ build.image }} · {{ build.git_branch }} · {{ format(build.created_at) }}</small><small v-if="build.error_message" class="build-error">{{ build.error_message }}</small></div>
                 <StatusBadge :status="build.status" />
+                <el-button v-if="build.pipeline_run_name" text @click="$router.push(`/devcenter/projects/${projectId}/pipelines/${build.pipeline_run_name}`)">查看过程</el-button>
                 <el-button v-if="build.status === 'Succeeded'" text @click="openDeployPlan(build.id)">发布</el-button>
               </article>
             </div>

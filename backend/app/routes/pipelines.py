@@ -1,6 +1,6 @@
 from flask import Blueprint, current_app, request
 
-from app.models import Application, PipelineExecution
+from app.models import Application, ApplicationBuildVersion, PipelineExecution
 from app.services.project_service import ProjectService
 from app.services.tekton_service import TektonService
 from app.utils.errors import ApiError
@@ -27,13 +27,24 @@ def get_execution(project_id, pipeline_run_name):
         )
         .first()
     )
-    if not execution:
+    if execution:
+        return execution
+    build = (
+        ApplicationBuildVersion.query.join(Application)
+        .filter(
+            ApplicationBuildVersion.project_id == project_id,
+            ApplicationBuildVersion.pipeline_run_name == pipeline_run_name,
+            Application.project_id == project_id,
+        )
+        .first()
+    )
+    if not build:
         raise ApiError(
             "PipelineExecution 不存在",
             404,
             "PIPELINE_EXECUTION_NOT_FOUND",
         )
-    return execution
+    return build
 
 
 @bp.get("")

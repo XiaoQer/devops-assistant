@@ -132,7 +132,7 @@
             <div v-if="buildVersions.length" class="build-version-list">
               <div class="build-version-head"><strong>可发布构建版本</strong><span>{{ buildVersions.length }} versions</span></div>
               <article v-for="build in buildVersions.slice(0, 4)" :key="build.id" class="build-version-item">
-                <div><b>{{ build.version }}</b><small>{{ build.image }} · {{ build.git_branch }} · {{ format(build.created_at) }}</small></div>
+                <div><b>{{ build.version }}</b><small>{{ build.image }} · {{ build.git_branch }} · {{ format(build.created_at) }}</small><small v-if="build.error_message" class="build-error">{{ build.error_message }}</small></div>
                 <StatusBadge :status="build.status" />
                 <el-button v-if="build.status === 'Succeeded'" text @click="openDeployPlan(build.id)">发布</el-button>
               </article>
@@ -492,6 +492,10 @@ onMounted(load)
 .build-version-item b,
 .build-version-item small {
   display: block;
+}
+
+.build-version-item small.build-error {
+  color: var(--danger);
 }
 
 .build-version-item b {

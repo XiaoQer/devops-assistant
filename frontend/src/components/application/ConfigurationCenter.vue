@@ -96,7 +96,7 @@ import { applicationApi } from '../../api/application'
 import type { ApplicationConfig, ApplicationEnvironment } from '../../types'
 import EmptyState from '../common/EmptyState.vue'
 
-const props = defineProps<{ applicationId: number }>()
+const props = defineProps<{ applicationId: number; projectId: number }>()
 const environments = ref<ApplicationEnvironment[]>([])
 const environmentId = ref(0)
 const configs = ref<ApplicationConfig[]>([])
@@ -126,7 +126,7 @@ const form = reactive({ config_type: 'env', config_key: '', value: '', change_me
 const activeLabel = computed(() => tabs.find(tab => tab.value === type.value)?.label)
 
 async function init() {
-  environments.value = await applicationApi.environments(props.applicationId)
+  environments.value = await applicationApi.environments(props.projectId, props.applicationId)
   environmentId.value = environments.value[0]?.id || 0
   load()
 }
@@ -135,7 +135,7 @@ async function load() {
   if (!environmentId.value) return
   loading.value = true
   try {
-    configs.value = await applicationApi.configs(props.applicationId, environmentId.value, type.value)
+    configs.value = await applicationApi.configs(props.projectId, props.applicationId, environmentId.value, type.value)
   } finally {
     loading.value = false
   }
@@ -162,8 +162,8 @@ async function save() {
   if (!form.config_key) return ElMessage.warning('请输入配置 Key')
   saving.value = true
   try {
-    if (editing.value) await applicationApi.updateConfig(editing.value.id, { value: form.value, change_message: form.change_message })
-    else await applicationApi.saveConfig(props.applicationId, { ...form, environment_id: environmentId.value })
+    if (editing.value) await applicationApi.updateConfig(props.projectId, editing.value.id, { value: form.value, change_message: form.change_message })
+    else await applicationApi.saveConfig(props.projectId, props.applicationId, { ...form, environment_id: environmentId.value })
     ElMessage.success('配置新版本已保存')
     dialog.value = false
     load()
@@ -174,7 +174,7 @@ async function save() {
 
 async function remove(item: ApplicationConfig) {
   await ElMessageBox.confirm(`确认删除 ${item.config_key}？历史版本仍会保留。`, '删除配置', { type: 'warning' })
-  await applicationApi.deleteConfig(item.id)
+  await applicationApi.deleteConfig(props.projectId, item.id)
   ElMessage.success('配置已删除')
   load()
 }
@@ -183,7 +183,7 @@ async function redeploy() {
   redeploying.value = true
   try {
     const env = environments.value.find(item => item.id === environmentId.value)
-    const result = await applicationApi.deploy(props.applicationId, { environment: env?.environment_name })
+    const result = await applicationApi.deploy(props.projectId, props.applicationId, { environment: env?.environment_name })
     ElMessage.success(result.approval_required ? '生产发布审批已提交' : '重新部署已启动')
   } finally {
     redeploying.value = false

@@ -114,7 +114,7 @@ import { applicationApi } from '../../api/application'
 import StatusBadge from '../common/StatusBadge.vue'
 import EmptyState from '../common/EmptyState.vue'
 
-const props = defineProps<{ status?: RuntimeStatus; applicationId?: number; environment?: string }>()
+const props = defineProps<{ status?: RuntimeStatus; applicationId?: number; projectId?: number; environment?: string }>()
 const drawer = ref(false)
 const drawerMode = ref('logs')
 const selectedPod = ref('')
@@ -147,10 +147,10 @@ async function openPod(name: string, mode: 'logs' | 'yaml') {
   loadingPod.value = name
   try {
     if (mode === 'logs') {
-      const result = await applicationApi.podLogs(props.applicationId, name, props.environment || 'dev')
+      const result = await applicationApi.podLogs(props.projectId || 0, props.applicationId, name, props.environment || 'dev')
       podContent.value = result.logs || '该 Pod 暂无日志。'
     } else {
-      const result = await applicationApi.podYaml(props.applicationId, name, props.environment || 'dev')
+      const result = await applicationApi.podYaml(props.projectId || 0, props.applicationId, name, props.environment || 'dev')
       podContent.value = JSON.stringify(result, null, 2)
     }
     drawer.value = true

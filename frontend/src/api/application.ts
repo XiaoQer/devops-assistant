@@ -13,59 +13,57 @@ export interface CreateApplicationInput {
 }
 
 export const applicationApi = {
-  list: (projectId?: number) => client.get<never, Application[]>('/applications', {
-    params: projectId ? { projectId } : undefined,
-  }),
-  get: (id: number) => client.get<never, Application>(`/applications/${id}`),
-  create: (input: CreateApplicationInput) =>
-    client.post<never, Application>('/applications', input),
+  list: (projectId: number) => client.get<never, Application[]>(`/projects/${projectId}/applications`),
+  get: (projectId: number, id: number) => client.get<never, Application>(`/projects/${projectId}/applications/${id}`),
+  create: (projectId: number, input: Omit<CreateApplicationInput, 'project_id'>) =>
+    client.post<never, Application>(`/projects/${projectId}/applications`, input),
   deployPlan: (
-    id: number,
+    projectId: number, id: number,
     options: { environment?: string; image_tag?: string; git_commit?: string } = {},
-  ) => client.post<never, DeploymentPlan>(`/applications/${id}/deploy/plan`, options),
+  ) => client.post<never, DeploymentPlan>(`/projects/${projectId}/applications/${id}/deploy/plan`, options),
   deploy: (
-    id: number,
+    projectId: number, id: number,
     options: { environment?: string; image_tag?: string; git_commit?: string } = {},
   ) => client.post<never, Partial<Execution> & {
     approval_required?: boolean
     approval?: import('../types').Approval
-  }>(`/applications/${id}/deploy`, options),
-  executions: (id: number) =>
-    client.get<never, Execution[]>(`/applications/${id}/executions`),
-  releases: (id: number, environment?: string) =>
-    client.get<never, Release[]>(`/applications/${id}/releases`, {
+  }>(`/projects/${projectId}/applications/${id}/deploy`, options),
+  executions: (projectId: number, id: number) =>
+    client.get<never, Execution[]>(`/projects/${projectId}/applications/${id}/executions`),
+  releases: (projectId: number, id: number, environment?: string) =>
+    client.get<never, Release[]>(`/projects/${projectId}/applications/${id}/releases`, {
       params: { environment },
     }),
-  rollback: (id: number, releaseId: number, environment = 'dev') =>
-    client.post(`/applications/${id}/rollback`, {
+  rollback: (projectId: number, id: number, releaseId: number, environment = 'dev') =>
+    client.post(`/projects/${projectId}/applications/${id}/rollback`, {
       release_id: releaseId,
       environment,
     }),
-  status: (id: number, environment = 'dev') =>
-    client.get<never, RuntimeStatus>(`/applications/${id}/status`, {
+  status: (projectId: number, id: number, environment = 'dev') =>
+    client.get<never, RuntimeStatus>(`/projects/${projectId}/applications/${id}/status`, {
       params: { environment },
     }),
-  environments: (id: number) =>
-    client.get<never, ApplicationEnvironment[]>(`/applications/${id}/environments`),
-  createEnvironment: (id: number, input: Partial<ApplicationEnvironment>) =>
-    client.post<never, ApplicationEnvironment>(`/applications/${id}/environments`, input),
-  updateEnvironment: (id: number, envId: number, input: Partial<ApplicationEnvironment>) =>
-    client.patch<never, ApplicationEnvironment>(`/applications/${id}/environments/${envId}`, input),
-  deleteEnvironment: (id: number, envId: number) =>
-    client.delete(`/applications/${id}/environments/${envId}`),
-  cloneEnvironment: (id: number, envId: number, environmentName: string) =>
-    client.post<never, ApplicationEnvironment>(`/applications/${id}/environments/${envId}/clone`, { environment_name: environmentName }),
-  compareEnvironments: (id: number, left: number, right: number) =>
-    client.get<never, Array<{field:string;left:unknown;right:unknown;changed:boolean}>>(`/applications/${id}/environments/compare`, { params: { left, right } }),
-  configs: (id: number, environmentId: number, type?: string) =>
-    client.get<never, ApplicationConfig[]>(`/applications/${id}/configs`, { params: { environmentId, type } }),
-  saveConfig: (id: number, input: Record<string, unknown>) =>
-    client.post<never, ApplicationConfig>(`/applications/${id}/configs`, input),
-  updateConfig: (configId: number, input: Record<string, unknown>) =>
-    client.patch<never, ApplicationConfig>(`/configs/${configId}`, input),
-  deleteConfig: (configId: number) => client.delete(`/configs/${configId}`),
-  podLogs: (id: number, pod: string, environment: string) =>
-    client.get<never, {logs:string}>(`/applications/${id}/runtime/pods/${pod}/logs`, { params: { environment } }),
-  podYaml: (id: number, pod: string, environment: string) =>
-    client.get<Record<string, unknown>>(`/applications/${id}/runtime/pods/${pod}/yaml`, { params: { environment } }),
+  environments: (projectId: number, id: number) =>
+    client.get<never, ApplicationEnvironment[]>(`/projects/${projectId}/applications/${id}/environments`),
+  createEnvironment: (projectId: number, id: number, input: Partial<ApplicationEnvironment>) =>
+    client.post<never, ApplicationEnvironment>(`/projects/${projectId}/applications/${id}/environments`, input),
+  updateEnvironment: (projectId: number, id: number, envId: number, input: Partial<ApplicationEnvironment>) =>
+    client.patch<never, ApplicationEnvironment>(`/projects/${projectId}/applications/${id}/environments/${envId}`, input),
+  deleteEnvironment: (projectId: number, id: number, envId: number) =>
+    client.delete(`/projects/${projectId}/applications/${id}/environments/${envId}`),
+  cloneEnvironment: (projectId: number, id: number, envId: number, environmentName: string) =>
+    client.post<never, ApplicationEnvironment>(`/projects/${projectId}/applications/${id}/environments/${envId}/clone`, { environment_name: environmentName }),
+  compareEnvironments: (projectId: number, id: number, left: number, right: number) =>
+    client.get<never, Array<{field:string;left:unknown;right:unknown;changed:boolean}>>(`/projects/${projectId}/applications/${id}/environments/compare`, { params: { left, right } }),
+  configs: (projectId: number, id: number, environmentId: number, type?: string) =>
+    client.get<never, ApplicationConfig[]>(`/projects/${projectId}/applications/${id}/configs`, { params: { environmentId, type } }),
+  saveConfig: (projectId: number, id: number, input: Record<string, unknown>) =>
+    client.post<never, ApplicationConfig>(`/projects/${projectId}/applications/${id}/configs`, input),
+  updateConfig: (projectId: number, configId: number, input: Record<string, unknown>) =>
+    client.patch<never, ApplicationConfig>(`/projects/${projectId}/configs/${configId}`, input),
+  deleteConfig: (projectId: number, configId: number) => client.delete(`/projects/${projectId}/configs/${configId}`),
+  podLogs: (projectId: number, id: number, pod: string, environment: string) =>
+    client.get<never, {logs:string}>(`/projects/${projectId}/applications/${id}/runtime/pods/${pod}/logs`, { params: { environment } }),
+  podYaml: (projectId: number, id: number, pod: string, environment: string) =>
+    client.get<Record<string, unknown>>(`/projects/${projectId}/applications/${id}/runtime/pods/${pod}/yaml`, { params: { environment } }),
 }

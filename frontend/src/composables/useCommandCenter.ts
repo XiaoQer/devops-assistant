@@ -6,6 +6,7 @@ import { applicationApi } from '../api/application'
 import { useApplicationStore } from '../stores/application'
 import { useCommandStore } from '../stores/command'
 import { useUiStore } from '../stores/ui'
+import { useProjectStore } from '../stores/project'
 
 export interface CommandItem {
   id: string
@@ -31,6 +32,8 @@ export function useCommandCenter() {
   const applicationStore = useApplicationStore()
   const commandStore = useCommandStore()
   const uiStore = useUiStore()
+  const projectStore = useProjectStore()
+  const projectPath = (suffix: string) => `/devcenter/projects/${projectStore.activeProjectId || applicationStore.items[0]?.project_id || 0}/${suffix}`
   const commands = ref<CommandItem[]>([])
 
   watchEffect(() => {
@@ -42,7 +45,7 @@ export function useCommandCenter() {
         section: 'Services',
         keywords: [app.name, app.repo_url, app.language, app.framework, 'application', 'workspace', '服务', '应用', 'open'],
         run: () => {
-          router.push(`/applications/${app.id}`)
+          router.push(`/devcenter/projects/${app.project_id}/applications/${app.id}`)
         },
       },
       {
@@ -52,15 +55,15 @@ export function useCommandCenter() {
         section: 'Services',
         keywords: [app.name, 'deploy', 'release', '发布', '部署'],
         run: async () => {
-          const result = await applicationApi.deploy(app.id)
+          const result = await applicationApi.deploy(app.project_id!, app.id)
           if (result.approval_required) {
             ElMessage.success('Production 发布审批已提交')
-            router.push('/approvals')
+            router.push(`/devcenter/projects/${app.project_id}/approvals`)
             return
           }
           if (result.pipeline_run_name) {
             ElMessage.success(`已启动 ${result.pipeline_run_name}`)
-            router.push(`/pipelines/${result.pipeline_run_name}`)
+            router.push(`/devcenter/projects/${app.project_id}/pipelines/${result.pipeline_run_name}`)
             return
           }
           ElMessage.success('部署已提交')
@@ -85,7 +88,7 @@ export function useCommandCenter() {
         section: 'Navigate',
         keywords: ['applications', 'services', 'catalog', '应用', '服务', 'open'],
         shortcut: 'G A',
-        run: () => router.push('/applications'),
+        run: () => router.push(projectPath('applications')),
       },
       {
         id: 'go-pipelines',
@@ -94,7 +97,7 @@ export function useCommandCenter() {
         section: 'Navigate',
         keywords: ['pipelines', 'runs', 'builds', 'pipeline', '流水线', '执行', 'open'],
         shortcut: 'G P',
-        run: () => router.push('/pipelines'),
+        run: () => router.push(projectPath('pipelines')),
       },
       {
         id: 'go-releases',
@@ -103,7 +106,7 @@ export function useCommandCenter() {
         section: 'Navigate',
         keywords: ['releases', 'deployments', 'rollback', '发布', '回滚', 'open'],
         shortcut: 'G R',
-        run: () => router.push('/releases'),
+        run: () => router.push(projectPath('releases')),
       },
       {
         id: 'go-approvals',
@@ -112,7 +115,7 @@ export function useCommandCenter() {
         section: 'Navigate',
         keywords: ['approvals', 'governance', 'production', '审批', '治理', 'open'],
         shortcut: 'G O',
-        run: () => router.push('/approvals'),
+        run: () => router.push(projectPath('approvals')),
       },
       {
         id: 'go-registries',
@@ -120,7 +123,7 @@ export function useCommandCenter() {
         description: '管理平台级镜像仓库连接',
         section: 'Navigate',
         keywords: ['registries', 'registry', 'container', '镜像仓库', 'open'],
-        run: () => router.push('/settings/registries'),
+        run: () => router.push(`/project-center/projects/${projectStore.activeProjectId || applicationStore.items[0]?.project_id || 0}/registries`),
       },
       {
         id: 'new-application',
@@ -129,7 +132,7 @@ export function useCommandCenter() {
         section: 'Create',
         keywords: ['create', 'new', 'application', 'workspace', '创建应用'],
         shortcut: 'N A',
-        run: () => router.push('/applications/new'),
+        run: () => router.push(projectPath('applications/new')),
       },
       {
         id: 'review-failures',
@@ -137,7 +140,7 @@ export function useCommandCenter() {
         description: '查看失败执行与近期异常',
         section: 'Operate',
         keywords: ['incident', 'failures', 'errors', '故障', '异常', 'production'],
-        run: () => router.push('/pipelines'),
+        run: () => router.push(projectPath('pipelines')),
       },
       {
         id: 'rollback-service',
@@ -145,7 +148,7 @@ export function useCommandCenter() {
         description: '跳转到发布中心执行回滚',
         section: 'Operate',
         keywords: ['rollback', 'order service', '回滚'],
-        run: () => router.push('/releases'),
+        run: () => router.push(projectPath('releases')),
       },
       {
         id: 'deploy-payment',
@@ -153,7 +156,7 @@ export function useCommandCenter() {
         description: '跳转到发布中心继续部署流程',
         section: 'Operate',
         keywords: ['deploy', 'payment service', '发布', '部署'],
-        run: () => router.push('/releases'),
+        run: () => router.push(projectPath('releases')),
       },
       {
         id: 'toggle-theme',

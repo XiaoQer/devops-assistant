@@ -2,14 +2,14 @@ import { client } from './client'
 import type { PipelineRunSummary } from '../types'
 
 export const pipelineApi = {
-  list: (params: {page:number;pageSize:number;status?:string;query?:string;projectId?:number}) =>
+  list: (projectId: number, params: {page:number;pageSize:number;status?:string;query?:string}) =>
     client.get<never, {
       items:PipelineRunSummary[]
       page:number;pageSize:number;total:number
-    }>('/pipelines', { params }),
-  status: (name: string, namespace = 'devops-platform') =>
-    client.get(`/pipelines/${name}/status`, { params: { namespace } }),
-  logs: (name: string, namespace = 'devops-platform') =>
+    }>(`/projects/${projectId}/pipelines`, { params }),
+  status: (projectId: number, name: string) =>
+    client.get(`/projects/${projectId}/pipelines/${name}/status`),
+  logs: (projectId: number, name: string) =>
     client.get<never, {
       pipeline_run: string
       status: string
@@ -25,11 +25,7 @@ export const pipelineApi = {
         pod?: string
         steps: Array<{ step: string; container: string; logs: string }>
       }>
-    }>(`/pipelines/${name}/logs`, {
-      params: { namespace },
-    }),
-  retry: (name: string, namespace = 'devops-platform') =>
-    client.post<never, { name: string; retried_from: string }>(`/pipelines/${name}/retry`, {}, {
-      params: { namespace },
-    }),
+    }>(`/projects/${projectId}/pipelines/${name}/logs`),
+  retry: (projectId: number, name: string) =>
+    client.post<never, { name: string; retried_from: string }>(`/projects/${projectId}/pipelines/${name}/retry`),
 }

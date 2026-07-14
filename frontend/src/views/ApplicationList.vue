@@ -6,7 +6,7 @@
       description="用软件工作区而不是配置表，查看每个服务当前状态、最近交付与下一步操作。"
     >
       <el-button @click="store.load()" :loading="store.loading">刷新</el-button>
-      <el-button type="primary" @click="router.push('/applications/new')">＋ 创建应用</el-button>
+      <el-button type="primary" @click="router.push(`/devcenter/projects/${projectId}/applications/new`)">＋ 创建应用</el-button>
     </PageHeader>
 
     <div class="metrics">
@@ -71,8 +71,8 @@
           </div>
 
           <div class="app-actions">
-            <el-button @click="router.push(`/applications/${app.id}`)">打开工作区</el-button>
-            <el-button type="primary" @click="router.push(`/applications/${app.id}`)">进入发布</el-button>
+            <el-button @click="router.push(`/devcenter/projects/${projectId}/applications/${app.id}`)">打开工作区</el-button>
+            <el-button type="primary" @click="router.push(`/devcenter/projects/${projectId}/applications/${app.id}`)">进入发布</el-button>
           </div>
         </article>
 
@@ -81,7 +81,7 @@
           title="没有找到匹配的服务"
           description="换一个搜索条件，或者直接创建一个新的应用工作区。"
         >
-          <el-button type="primary" @click="router.push('/applications/new')">创建应用</el-button>
+          <el-button type="primary" @click="router.push(`/devcenter/projects/${projectId}/applications/new`)">创建应用</el-button>
         </EmptyState>
       </section>
 
@@ -97,13 +97,13 @@
             <span class="soft-pill">Priority</span>
             <h4>{{ failed ? `${failed} 个服务最近交付失败` : '当前没有失败服务' }}</h4>
             <p>{{ failed ? '建议先打开失败服务工作区，查看执行日志并发起修复。' : '可以开始新一轮部署或清理待优化配置。' }}</p>
-            <el-button @click="router.push(failed ? '/pipelines' : '/applications/new')">{{ failed ? '查看失败执行' : '新建应用' }}</el-button>
+            <el-button @click="router.push(failed ? `/devcenter/projects/${projectId}/pipelines` : `/devcenter/projects/${projectId}/applications/new`)">{{ failed ? '查看失败执行' : '新建应用' }}</el-button>
           </article>
           <article>
             <span class="soft-pill">Focus</span>
             <h4>{{ running ? `${running} 个服务正在交付中` : '当前没有进行中的交付' }}</h4>
             <p>把注意力放在真正影响交付的工作流上，而不是浏览大而全的表格。</p>
-            <el-button @click="router.push('/releases')">进入发布中心</el-button>
+            <el-button @click="router.push(`/devcenter/projects/${projectId}/releases`)">进入发布中心</el-button>
           </article>
         </div>
       </aside>
@@ -117,7 +117,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useApplicationStore } from '../stores/application'
 import { projectApi } from '../api/project'
@@ -129,6 +129,7 @@ import StatusBadge from '../components/common/StatusBadge.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 
 const router = useRouter()
+const route = useRoute()
 const store = useApplicationStore()
 const projectStore = useProjectStore()
 const query = ref('')
@@ -168,8 +169,8 @@ watch(projectId, async value => {
 
 onMounted(async () => {
   projectStore.init()
+  projectId.value = Number(route.params.projectId) || projectStore.activeProjectId
   projects.value = await projectApi.list()
-  projectId.value = projectStore.activeProjectId
   await store.load(projectId.value || undefined)
 })
 </script>

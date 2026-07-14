@@ -162,7 +162,7 @@ async function load() {
   loading.value = true
   try {
     const [environmentItems, clusterItems] = await Promise.all([
-      applicationApi.environments(props.applicationId),
+      applicationApi.environments(props.projectId, props.applicationId),
       props.projectId ? projectApi.clusters(props.projectId) : Promise.resolve([]),
     ])
     environments.value = environmentItems
@@ -187,8 +187,8 @@ function edit(env: ApplicationEnvironment) {
 async function save() {
   saving.value = true
   try {
-    if (editing.value) await applicationApi.updateEnvironment(props.applicationId, editing.value.id, form)
-    else await applicationApi.createEnvironment(props.applicationId, form)
+    if (editing.value) await applicationApi.updateEnvironment(props.projectId, props.applicationId, editing.value.id, form)
+    else await applicationApi.createEnvironment(props.projectId, props.applicationId, form)
     ElMessage.success('环境配置已保存')
     dialog.value = false
     await load()
@@ -202,14 +202,14 @@ async function clone(env: ApplicationEnvironment) {
     inputPattern: /^[a-z][a-z0-9-]*$/,
     inputErrorMessage: '仅支持小写字母、数字和连字符',
   })
-  await applicationApi.cloneEnvironment(props.applicationId, env.id, value)
+  await applicationApi.cloneEnvironment(props.projectId, props.applicationId, env.id, value)
   ElMessage.success('环境已克隆')
   load()
 }
 
 async function remove(env: ApplicationEnvironment) {
   await ElMessageBox.confirm(`确认删除 ${env.display_name || env.environment_name}？该操作不会删除 Kubernetes 工作负载。`, '危险操作', { type: 'warning' })
-  await applicationApi.deleteEnvironment(props.applicationId, env.id)
+  await applicationApi.deleteEnvironment(props.projectId, props.applicationId, env.id)
   ElMessage.success('环境已删除')
   load()
 }
@@ -232,7 +232,7 @@ function openCompare() {
 
 async function compare() {
   if (compareLeft.value && compareRight.value) {
-    differences.value = await applicationApi.compareEnvironments(props.applicationId, compareLeft.value, compareRight.value)
+    differences.value = await applicationApi.compareEnvironments(props.projectId, props.applicationId, compareLeft.value, compareRight.value)
   }
 }
 

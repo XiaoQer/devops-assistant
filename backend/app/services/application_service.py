@@ -10,6 +10,9 @@ from .configuration_service import ConfigurationService
 from .kubernetes_service import KubernetesService
 from .environment_service import EnvironmentService
 from .registry_service import RegistryService
+from .delivery_context_service import DeliveryContextService
+from .kubernetes_cluster_service import KubernetesClusterService
+from .cluster_credential_materializer import ClusterCredentialMaterializer
 
 
 class ApplicationService:
@@ -42,10 +45,9 @@ class ApplicationService:
         analysis = RepoAnalyzerService().analyze(
             payload["repo_url"], payload.get("branch", "main")
         )
-        registry = RegistryService().get_default(project.id)
+        registry = RegistryService().get_project_default(project.id)
         image_name = payload.get("image_name") or (
-            f"{registry.image_prefix}/{payload['name']}"
-            if registry else f"{current_app.config['DEFAULT_IMAGE_REGISTRY']}/{payload['name']}"
+            f"{registry.image_prefix}/{payload['name']}" if registry else None
         )
         app = Application(
             project_id=project.id,
@@ -88,7 +90,21 @@ class ApplicationService:
         image_tag = payload.get("image_tag", app.image_tag)
         deploy_namespace = payload.get("namespace", app.namespace)
         image_name = payload.get("image_name", app.image_name)
-        registry = RegistryService().get_default(app.project_id)
+        registry = RegistryService().get_project_default(app.project_id)
+        delivery_context = None
+        try:
+            delivery_context = DeliveryContextService().resolve(
+                app.project, app, environment_name
+            )
+        except ApiError:
+            # The HTTP route performs the mandatory preflight check. Keep the
+            # service usable for legacy callers that do not yet have a bound
+            # target context; once a context exists, all writes use its client.
+            if environment and (
+                environment.kubernetes_cluster_id
+                or registry
+            ):
+                raise
         deployment_config = {
             "replicas": 1,
             "cpu_request": "100m",
@@ -103,14 +119,37 @@ class ApplicationService:
             "secret_name": f"{app.name}-secret",
             "registry_secret_name": "",
         }
+        target_kubernetes = None
+        kubeconfig_secret_name = ""
+        kube_context = ""
+        if delivery_context:
+            registry = delivery_context.registry
+            image_name = delivery_context.image_name
+            target_kubernetes = KubernetesClusterService().client(
+                delivery_context.cluster
+            )
+            central_kubernetes = KubernetesService()
+            kubeconfig_secret_name = ClusterCredentialMaterializer().materialize(
+                app.project,
+                delivery_context.cluster,
+                central_kubernetes,
+            )
+            deployment_config["registry_secret_name"] = ConfigurationService().materialize_build_registry(
+                delivery_context.registry,
+                central_kubernetes,
+                tekton_namespace,
+            )
+            kube_context = delivery_context.kube_context
+        else:
+            target_kubernetes = KubernetesService()
         if environment:
-            if registry:
+            if registry and not delivery_context:
                 image_name = f"{registry.image_prefix}/{app.name}"
             elif environment.image_registry:
                 # Backward compatibility for installations created before global registries.
                 image_name = f"{environment.image_registry.rstrip('/')}/{app.name}"
             resources = ConfigurationService().materialize(
-                app, environment, KubernetesService(), registry=registry
+                app, environment, target_kubernetes, registry=registry
             )
             deployment_config.update({
                 "replicas": environment.replicas,
@@ -130,6 +169,8 @@ class ApplicationService:
             image_tag, tekton_namespace, app.port,
             deploy_namespace=deploy_namespace,
             deployment_config=deployment_config,
+            kubeconfig_secret_name=kubeconfig_secret_name,
+            kube_context=kube_context,
         )
         execution = PipelineExecution(
             application_id=app.id,
@@ -170,7 +211,10 @@ class ApplicationService:
                 },
                 "build": {
                     "type": app.build_type,
-                    "image": f"{app.image_name}:{app.image_tag}",
+                    "image": (
+                        f"{app.image_name}:{app.image_tag}"
+                        if app.image_name else None
+                    ),
                 },
                 "deploy": {
                     "type": "kubernetes",

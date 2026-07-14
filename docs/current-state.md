@@ -1,6 +1,6 @@
 # 当前状态
 
-最近审计：2026-07-13
+最近审计：2026-07-14
 
 本文件用于区分经过验证的仓库事实与产品愿景。
 
@@ -40,6 +40,12 @@
 - 应用环境和配置的增删改查、克隆、比较与导出。
 - 部署计划、Tekton PipelineRun 创建、重试、结构化状态和日志。
 - 发布历史、回滚流程和交付状态同步。
+- Application Environment 已解析为 Project 交付上下文：已绑定且连接成功的 Kubernetes
+  集群作为唯一目标客户端，Project 默认且连接成功的 Registry 作为构建镜像地址；未测试、
+  失败、停用或跨 Project 的上下文会在发布计划和审批执行时阻断。
+- 第一阶段中央 Tekton 构建并部署：目标 kubeconfig 以 Project/Cluster 确定性命名 Secret
+  幂等物化到中央 Tekton Namespace，只有 deploy Task 以只读方式挂载并显式指定 kubeconfig
+  路径和 context；目标配置写入目标集群，中央集群只保存 Tekton 与构建 Registry Secret。
 - 审批提交、批准和拒绝流程。
 - Kubernetes 运行状态、Pod 日志和 Pod YAML 接口。
 - 面向少量平台命令、基于规则的 AI 意图识别。
@@ -81,8 +87,9 @@
 - 模型中存在项目成员角色，但尚未用于强制 API 鉴权。
 - Project 已保存 GitHub 和 Aliyun 绑定元信息，但尚未调用 GitHub 或 Aliyun API
   初始化外部资源，也尚未同步项目成员权限。
-- Kubernetes 集群已能以 Project 子资源安全接入和测试；Application Environment 到
-  多集群部署目标的完整选择、运行客户端切换和治理体验仍需后续规格设计。
+- Kubernetes 集群已能以 Project 子资源安全接入和测试；Application Environment 的多集群
+  部署目标、运行客户端切换和中央 Tekton kubeconfig 挂载已在第一阶段实现，前端交付体验
+  和构建/部署拆分仍可继续完善。
 - AI 意图识别是确定性的关键词匹配，不是 LLM 规划器或自主执行闭环。
 - 已支持运行态检查，但尚不支持监控、告警和事件生命周期管理。
 - Service 已有基本边界，但部分仍混合编排、持久化和基础设施访问。
@@ -105,5 +112,5 @@
 
 ## 下一个 Harness 里程碑
 
-为 Application Environment 设计完整的多集群部署目标选择和运行客户端切换规格，确保
-实际部署与运行态检查使用环境所绑定集群的加密 kubeconfig。
+实现 Delivery Reconciler：中央 Tekton 只负责构建和推送，Reconciler 监听构建结果后通过
+目标集群客户端部署，并逐步移除中央集群中的持久 kubeconfig Secret。

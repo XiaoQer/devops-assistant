@@ -53,7 +53,7 @@
                 <div class="release-foot">
                   <span>{{ row.git_commit?.slice(0, 8) || row.git_branch }}</span>
                   <time>{{ format(row.created_at) }}</time>
-                  <el-button v-if="row.pipeline_run_name" link @click="$router.push(`/pipelines/${row.pipeline_run_name}`)">查看日志</el-button>
+                  <el-button v-if="row.pipeline_run_name" link @click="$router.push(`/devcenter/projects/${projectId}/pipelines/${row.pipeline_run_name}`)">查看日志</el-button>
                 </div>
               </div>
             </article>
@@ -93,6 +93,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { releaseApi } from '../api/release'
+import { useRoute } from 'vue-router'
 import type { Release } from '../types'
 import PageHeader from '../components/common/PageHeader.vue'
 import MetricCard from '../components/common/MetricCard.vue'
@@ -100,6 +101,7 @@ import StatusBadge from '../components/common/StatusBadge.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 
 const items = ref<Release[]>([])
+const projectId = Number(useRoute().params.projectId)
 const total = ref(0)
 const page = ref(1)
 const pageSize = 20
@@ -114,7 +116,7 @@ const prodCount = computed(() => items.value.filter(item => item.environment ===
 async function load() {
   loading.value = true
   try {
-    const data = await releaseApi.list({ page: page.value, pageSize, environment: environment.value, status: status.value })
+    const data = await releaseApi.list(projectId, { page: page.value, pageSize, environment: environment.value, status: status.value })
     items.value = data.items
     total.value = data.total
   } finally {

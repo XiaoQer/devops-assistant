@@ -11,10 +11,9 @@ export const useApplicationStore = defineStore('applications', {
       this.loading = true
       try {
         const activeProjectId = projectId ?? projectStore.activeProjectId
-        this.items = await applicationApi.list(activeProjectId || undefined)
+        this.items = activeProjectId ? await applicationApi.list(activeProjectId) : []
       }
       finally { this.loading = false }
     },
   },
 })
-

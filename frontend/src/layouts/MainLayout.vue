@@ -31,7 +31,7 @@
 
       <div class="nav-group">
         <div v-if="!uiStore.sidebarCollapsed" class="nav-label">Workspace</div>
-        <router-link
+          <router-link
           v-for="item in nav"
           :key="item.path"
           :to="item.path"
@@ -40,13 +40,13 @@
         >
           <component :is="item.icon" />
           <span v-if="!uiStore.sidebarCollapsed">{{ item.name }}</span>
-          <span v-if="item.path === '/approvals' && !uiStore.sidebarCollapsed" class="nav-count">3</span>
+          <span v-if="item.name === 'Approvals' && !uiStore.sidebarCollapsed" class="nav-count">3</span>
         </router-link>
       </div>
 
       <div class="nav-group nav-secondary">
         <div v-if="!uiStore.sidebarCollapsed" class="nav-label">Platform</div>
-        <router-link to="/settings/registries" class="nav-item" active-class="active">
+        <router-link :to="registryPath" class="nav-item" active-class="active">
           <IconRegistry />
           <span v-if="!uiStore.sidebarCollapsed">Registries</span>
         </router-link>
@@ -68,7 +68,7 @@
           <h2>{{ currentTitle }}</h2>
         </div>
         <div class="topbar-actions">
-          <router-link to="/applications/new" class="command-button command-button-primary">
+          <router-link :to="projectPath('applications/new')" class="command-button command-button-primary">
             + New application
           </router-link>
           <button class="command-button" @click="commandStore.open()">
@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, shallowRef } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCommandStore } from '@/stores/command'
 import { useUiStore } from '@/stores/ui'
@@ -105,14 +105,20 @@ const projectStore = useProjectStore()
 const route = useRoute()
 const router = useRouter()
 
-const nav = shallowRef([
+const nav = computed(() => [
   { name: 'Overview', path: '/dashboard', icon: IconDashboard },
   { name: 'Projects', path: '/projects', icon: IconApplication },
-  { name: 'Applications', path: '/applications', icon: IconApplication },
-  { name: 'Pipelines', path: '/pipelines', icon: IconPipeline },
-  { name: 'Releases', path: '/releases', icon: IconRelease },
-  { name: 'Approvals', path: '/approvals', icon: IconApproval },
+  { name: 'Applications', path: projectPath('applications'), icon: IconApplication },
+  { name: 'Pipelines', path: projectPath('pipelines'), icon: IconPipeline },
+  { name: 'Releases', path: projectPath('releases'), icon: IconRelease },
+  { name: 'Approvals', path: projectPath('approvals'), icon: IconApproval },
 ])
+
+function projectPath(suffix: string) {
+  return `/devcenter/projects/${projectStore.activeProjectId || projectStore.items[0]?.id || 0}/${suffix}`
+}
+
+const registryPath = computed(() => `/project-center/projects/${projectStore.activeProjectId || projectStore.items[0]?.id || 0}/registries`)
 
 const currentTitle = computed(() => {
   const match = nav.value.find(item => route.path.startsWith(item.path))

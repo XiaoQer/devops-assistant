@@ -130,10 +130,10 @@
       <el-tabs v-model="activeTab" class="detail-tabs">
         <el-tab-pane label="Overview" name="overview"><ApplicationOverview :application="app" /></el-tab-pane>
         <el-tab-pane label="Environments" name="environments"><EnvironmentCenter :application-id="app.id" :project-id="app.project_id || 0" /></el-tab-pane>
-        <el-tab-pane label="Pipeline" name="pipeline"><section class="surface tab-card"><div class="surface-header"><div><h3>Pipeline executions</h3><p>最近 Tekton PipelineRun</p></div></div><el-table :data="executions"><el-table-column prop="pipeline_run_name" label="PipelineRun" min-width="280" /><el-table-column label="状态" width="130"><template #default="{row}"><StatusBadge :status="row.status" /></template></el-table-column><el-table-column label="创建时间" width="180"><template #default="{row}">{{ format(row.created_at) }}</template></el-table-column><el-table-column label="操作" width="100"><template #default="{row}"><el-button link @click="$router.push(`/pipelines/${row.pipeline_run_name}`)">详情</el-button></template></el-table-column></el-table><EmptyState v-if="!executions.length" title="暂无 Pipeline 执行" description="点击发布应用以启动第一条流水线。" /></section></el-tab-pane>
+        <el-tab-pane label="Pipeline" name="pipeline"><section class="surface tab-card"><div class="surface-header"><div><h3>Pipeline executions</h3><p>最近 Tekton PipelineRun</p></div></div><el-table :data="executions"><el-table-column prop="pipeline_run_name" label="PipelineRun" min-width="280" /><el-table-column label="状态" width="130"><template #default="{row}"><StatusBadge :status="row.status" /></template></el-table-column><el-table-column label="创建时间" width="180"><template #default="{row}">{{ format(row.created_at) }}</template></el-table-column><el-table-column label="操作" width="100"><template #default="{row}"><el-button link @click="$router.push(`/devcenter/projects/${projectId}/pipelines/${row.pipeline_run_name}`)">详情</el-button></template></el-table-column></el-table><EmptyState v-if="!executions.length" title="暂无 Pipeline 执行" description="点击发布应用以启动第一条流水线。" /></section></el-tab-pane>
         <el-tab-pane label="Release History" name="releases"><ReleaseHistoryTable :releases="releases" :rollback-id="rollbackId" @logs="openLogs" @rollback="rollback" /></el-tab-pane>
-        <el-tab-pane label="Runtime Status" name="runtime"><el-skeleton :loading="loadingRuntime" animated :rows="8"><RuntimeStatusPanel :status="runtime" :application-id="app.id" :environment="environment" /></el-skeleton></el-tab-pane>
-        <el-tab-pane label="Config" name="config"><ConfigurationCenter :application-id="app.id" /></el-tab-pane>
+        <el-tab-pane label="Runtime Status" name="runtime"><el-skeleton :loading="loadingRuntime" animated :rows="8"><RuntimeStatusPanel :status="runtime" :application-id="app.id" :project-id="projectId" :environment="environment" /></el-skeleton></el-tab-pane>
+        <el-tab-pane label="Config" name="config"><ConfigurationCenter :application-id="app.id" :project-id="projectId" /></el-tab-pane>
         <el-tab-pane label="Logs" name="logs"><EmptyState title="选择 Pipeline 查看日志" description="在 Pipeline 标签页中选择一次执行，查看 Task 与 Step 日志。" icon="≡" /></el-tab-pane>
       </el-tabs>
     </template>
@@ -181,6 +181,7 @@ const deployEnvironment = ref('')
 const deployPlan = ref<DeploymentPlan>()
 const rollbackId = ref(0)
 const environmentOptions = computed(() => environmentRecords.value.map(item => item.environment_name))
+const projectId = computed(() => Number(route.params.projectId))
 
 const shortRepo = (url: string) => url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '')
 const format = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false })
@@ -190,9 +191,9 @@ async function load() {
   try {
     const id = Number(route.params.id)
     const [application, executionItems, envItems] = await Promise.all([
-      applicationApi.get(id),
-      applicationApi.executions(id),
-      applicationApi.environments(id),
+      applicationApi.get(projectId.value, id),
+      applicationApi.executions(projectId.value, id),
+      applicationApi.environments(projectId.value, id),
     ])
     app.value = application
     executions.value = executionItems
@@ -200,7 +201,7 @@ async function load() {
     if (!environmentOptions.value.includes(environment.value)) {
       environment.value = environmentOptions.value[0] || 'dev'
     }
-    releases.value = await applicationApi.releases(id, environment.value)
+    releases.value = await applicationApi.releases(projectId.value, id, environment.value)
     await loadRuntime()
   } catch (error) {
     ElMessage.error((error as Error).message)
@@ -212,7 +213,7 @@ async function load() {
 async function loadRuntime() {
   loadingRuntime.value = true
   try {
-    runtime.value = await applicationApi.status(Number(route.params.id), environment.value)
+    runtime.value = await applicationApi.status(projectId.value, Number(route.params.id), environment.value)
   } catch {
     runtime.value = undefined
   } finally {
@@ -223,7 +224,7 @@ async function loadRuntime() {
 async function loadEnvironment() {
   if (!app.value) return
   ;[releases.value] = await Promise.all([
-    applicationApi.releases(Number(route.params.id), environment.value),
+    applicationApi.releases(projectId.value, Number(route.params.id), environment.value),
     loadRuntime(),
   ])
 }
@@ -242,7 +243,7 @@ async function loadDeployPlan() {
   loadingPlan.value = true
   deployPlan.value = undefined
   try {
-    deployPlan.value = await applicationApi.deployPlan(Number(route.params.id), {
+    deployPlan.value = await applicationApi.deployPlan(projectId.value, Number(route.params.id), {
       environment: deployEnvironment.value,
     })
   } catch (error) {
@@ -256,15 +257,15 @@ async function confirmDeploy() {
   if (!deployEnvironment.value || !deployPlan.value?.can_deploy) return
   deploying.value = true
   try {
-    const run = await applicationApi.deploy(Number(route.params.id), { environment: deployEnvironment.value })
+    const run = await applicationApi.deploy(projectId.value, Number(route.params.id), { environment: deployEnvironment.value })
     deployDialog.value = false
     environment.value = deployEnvironment.value
     if (run.approval_required) {
       ElMessage.success('Production 发布审批已提交')
-      router.push('/approvals')
+      router.push(`/devcenter/projects/${projectId.value}/approvals`)
     } else if (run.pipeline_run_name) {
       ElMessage.success('PipelineRun 已启动')
-      router.push(`/pipelines/${run.pipeline_run_name}`)
+      router.push(`/devcenter/projects/${projectId.value}/pipelines/${run.pipeline_run_name}`)
     }
   } catch (error) {
     ElMessage.error((error as Error).message)
@@ -289,7 +290,7 @@ async function rollback(release: Release) {
       type: 'warning',
     })
     rollbackId.value = release.id
-    await applicationApi.rollback(Number(route.params.id), release.id, environment.value)
+    await applicationApi.rollback(projectId.value, Number(route.params.id), release.id, environment.value)
     ElMessage.success('回滚已提交')
     await loadEnvironment()
   } catch (error) {
@@ -300,7 +301,7 @@ async function rollback(release: Release) {
 }
 
 function openLogs(release: Release) {
-  if (release.pipeline_run_name) router.push(`/pipelines/${release.pipeline_run_name}`)
+  if (release.pipeline_run_name) router.push(`/devcenter/projects/${projectId.value}/pipelines/${release.pipeline_run_name}`)
 }
 
 watch(environment, () => {

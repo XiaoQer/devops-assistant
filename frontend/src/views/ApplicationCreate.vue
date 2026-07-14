@@ -63,7 +63,7 @@
           <h3>Recognition result</h3>
           <p>创建成功后，这里会展示平台自动识别出的运行时与交付规格。</p>
         </div>
-        <el-button v-if="result" type="primary" @click="router.push(`/applications/${result.id}`)">进入应用工作区</el-button>
+        <el-button v-if="result" type="primary" @click="router.push(`/devcenter/projects/${form.project_id}/applications/${result.id}`)">进入应用工作区</el-button>
       </div>
       <div v-if="result" class="result-content">
         <div class="result-overview">
@@ -128,7 +128,12 @@ async function submit() {
   if (!form.name || !form.repo_url) return ElMessage.warning('请填写应用名称和仓库地址')
   loading.value = true
   try {
-    result.value = await applicationApi.create(form)
+    result.value = await applicationApi.create(form.project_id, {
+      name: form.name,
+      repo_url: form.repo_url,
+      branch: form.branch,
+      namespace: form.namespace,
+    })
     ElMessage.success('仓库分析完成')
   } catch (error) {
     ElMessage.error((error as Error).message)

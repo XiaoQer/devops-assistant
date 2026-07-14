@@ -1,6 +1,6 @@
 # 功能：Project 作用域 Application 多集群交付
 
-- 状态：草稿
+- 状态：第一阶段已实现
 - 负责人：Aegis Team
 - 创建日期：2026-07-14
 
@@ -17,17 +17,15 @@ Project 已经能够管理成员、Kubernetes 集群和 OCI Registry。Applicati
 
 ## 当前行为
 
-- `ApplicationService.create` 允许缺少 `project_id`，并回退到系统 Default Project。
-- Application 列表只把 `projectId` 作为可选过滤条件，详情和子资源通过全局 Application
-  ID 访问。
-- Application 创建后会生成一个 `dev` Environment，并记录 Project 默认 Kubernetes
-  集群 ID、名称和 kube context。
-- Environment 可以选择当前 Project 的 Kubernetes 集群，但部署、状态、日志、YAML 和
-  回滚仍使用默认 `KubernetesService()` 客户端。
-- 发布计划和部署会选择 Project 默认 Registry，但不会因 Registry 或 Cluster 未测试、
-  连接失败或停用而阻止发布。
-- Pipeline、Release 和 Approval 页面仍存在平台级查询和跳转路径。
-- 当前 Tekton Pipeline 在中央集群中同时执行构建、镜像推送和 `kubectl` 部署。
+- Application、Environment、Pipeline、Release、Approval 和 Runtime 均通过显式 Project
+  路径访问，父子资源归属不匹配时返回 404。
+- Application 创建不再回退平台级 Registry；发布前必须解析出当前 Project 的有效交付上下文。
+- Environment 绑定的 Kubernetes 集群负责配置、运行态、日志、YAML 和回滚；中央 Kubernetes
+  仅负责 Tekton 与构建凭据。
+- 发布计划、直接发布和审批通过都会校验 Cluster/Registry 的启用状态及最近连接状态。
+- 前端交付导航、API 和 Pipeline/Release/Approval 链接都保留当前 Project 上下文。
+- 当前 Tekton Pipeline 在中央集群中执行构建、镜像推送和目标集群部署；Delivery Reconciler
+  延后至下一阶段。
 
 相关证据包括：
 
@@ -79,29 +77,29 @@ deploy Task 挂载该 Secret，并显式选择 Environment 保存的 kube contex
 
 ## 验收条件
 
-- [ ] 给定 Project A 下的 Application，当用户通过 Project B 的 API 路径访问详情、环境、
+- [x] 给定 Project A 下的 Application，当用户通过 Project B 的 API 路径访问详情、环境、
       配置、发布、运行态、Pipeline、Release 或 Approval 时，则返回 404 且不泄露资源信息。
-- [ ] 给定创建 Application 的请求缺少 Project 上下文，当请求到达后端时，则请求被拒绝，
+- [x] 给定创建 Application 的请求缺少 Project 上下文，当请求到达后端时，则请求被拒绝，
       且不会创建或回退到 Default Project。
-- [ ] 给定 Environment 未绑定集群，或绑定集群停用、未测试、连接失败，当生成发布计划或
+- [x] 给定 Environment 未绑定集群，或绑定集群停用、未测试、连接失败，当生成发布计划或
       提交发布时，则返回明确阻塞项且不创建 PipelineRun。
-- [ ] 给定 Project 缺少启用、默认且连接成功的 Registry，当生成发布计划或提交发布时，
+- [x] 给定 Project 缺少启用、默认且连接成功的 Registry，当生成发布计划或提交发布时，
       则返回明确阻塞项且不创建 PipelineRun。
-- [ ] 给定交付上下文有效，当发布时，则应用配置写入 Environment 目标集群，中央 Tekton
+- [x] 给定交付上下文有效，当发布时，则应用配置写入 Environment 目标集群，中央 Tekton
       Namespace 获得确定性命名的集群 kubeconfig Secret 和 Registry Secret。
-- [ ] 给定 PipelineRun 被创建，当检查 Pipeline 资源时，则只有 deploy Task 挂载 kubeconfig，
+- [x] 给定 PipelineRun 被创建，当检查 Pipeline 资源时，则只有 deploy Task 挂载 kubeconfig，
       并通过显式 kubeconfig 路径和 kube context 向目标 Namespace 执行 `kubectl`。
-- [ ] 给定用户查询状态、Pod 日志、Pod YAML 或执行回滚，当 Environment 绑定目标集群时，
+- [x] 给定用户查询状态、Pod 日志、Pod YAML 或执行回滚，当 Environment 绑定目标集群时，
       则操作使用该集群客户端，不使用平台默认 Kubernetes 客户端。
-- [ ] 给定待审批发布的 Environment、Cluster 或 Registry 在审批期间发生变化，当审批通过时，
+- [x] 给定待审批发布的 Environment、Cluster 或 Registry 在审批期间发生变化，当审批通过时，
       则系统重新解析和校验交付上下文；失效上下文不能继续创建 PipelineRun。
-- [ ] 给定 Pipeline、Release 或 Approval 的 Project 列表接口，当查询时，则结果只包含当前
+- [x] 给定 Pipeline、Release 或 Approval 的 Project 列表接口，当查询时，则结果只包含当前
       Project 的数据库记录，且 PipelineRun 名称不能绕过数据库归属校验直接访问中央 Tekton。
-- [ ] 给定 kubeconfig、Registry Token 或应用 Secret，当执行 API、日志和测试时，则明文不会
+- [x] 给定 kubeconfig、Registry Token 或应用 Secret，当执行 API、日志和测试时，则明文不会
       出现在响应、错误消息、Pipeline 参数、Release 记录或测试输出中。
-- [ ] Alembic migration 能升级和降级，历史记录的 Project 与交付目标关联得到保留。
-- [ ] 后端相关自动化检查、前端类型检查、生产构建和 `./scripts/verify.sh` 全部通过。
-- [ ] `docs/current-state.md` 在实现并验证完成后反映最终能力和已知缺口。
+- [x] Alembic migration 能升级和降级，历史记录的 Project 与交付目标关联得到保留。
+- [x] 后端相关自动化检查、前端类型检查、生产构建和 `./scripts/verify.sh` 全部通过。
+- [x] `docs/current-state.md` 在实现并验证完成后反映最终能力和已知缺口。
 
 ## 设计说明
 

@@ -85,7 +85,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { pipelineApi } from '../api/pipeline'
 import PageHeader from '../components/common/PageHeader.vue'
 import MetricCard from '../components/common/MetricCard.vue'
@@ -95,6 +95,7 @@ import EmptyState from '../components/common/EmptyState.vue'
 type Run = Awaited<ReturnType<typeof pipelineApi.list>>['items'][number]
 
 const router = useRouter()
+const projectId = Number(useRoute().params.projectId)
 const items = ref<Run[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -108,7 +109,7 @@ const counts = reactive({ succeeded: 0, running: 0, failed: 0 })
 async function load() {
   loading.value = true
   try {
-    const data = await pipelineApi.list({ page: page.value, pageSize, status: status.value || undefined, query: query.value || undefined })
+    const data = await pipelineApi.list(projectId, { page: page.value, pageSize, status: status.value || undefined, query: query.value || undefined })
     items.value = data.items
     total.value = data.total
     counts.succeeded = items.value.filter(item => item.status === 'Succeeded').length
@@ -131,7 +132,7 @@ function duration(run: Run) {
 }
 
 function open(run: Run) {
-  router.push(`/pipelines/${run.name}`)
+  router.push(`/devcenter/projects/${projectId}/pipelines/${run.name}`)
 }
 
 let searchTimer: number

@@ -15,6 +15,7 @@ class TektonService:
     def create_pipeline_run(
         self, pipeline_name, app_name, repo_url, branch, image_name, image_tag,
         namespace, container_port, deploy_namespace=None, deployment_config=None,
+        kubeconfig_secret_name="", kube_context="",
     ):
         deployment_config = deployment_config or {}
         registry_secret_name = deployment_config.get("registry_secret_name")
@@ -77,6 +78,8 @@ class TektonService:
                     {"name": "config_map_name", "value": deployment_config.get("config_map_name", f"{app_name}-config")},
                     {"name": "secret_name", "value": deployment_config.get("secret_name", f"{app_name}-secret")},
                     {"name": "registry_secret_name", "value": deployment_config.get("registry_secret_name", "")},
+                    {"name": "kubeconfig_secret_name", "value": kubeconfig_secret_name},
+                    {"name": "kube_context", "value": kube_context},
                 ],
             },
         }

@@ -67,7 +67,7 @@ export const projectApi = {
       `/projects/${projectId}/clusters/${clusterId}/test-connection`,
     ),
   applications: (projectId: number) =>
-    client.get<never, Application[]>('/applications', { params: { projectId } }),
+    client.get<never, Application[]>(`/projects/${projectId}/applications`),
   registries: (projectId: number) =>
     client.get<never, ContainerRegistry[]>(`/projects/${projectId}/registries`),
   addRegistry: (projectId: number, input: RegistryPayload) =>

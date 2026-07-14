@@ -91,7 +91,9 @@ import EmptyState from '../components/common/EmptyState.vue'
 import PipelineStatusTimeline from '../components/pipeline/PipelineStatusTimeline.vue'
 import TaskRunLogViewer from '../components/pipeline/TaskRunLogViewer.vue'
 
-const name = String(useRoute().params.name)
+const route = useRoute()
+const projectId = Number(route.params.projectId)
+const name = String(route.params.name)
 const details = ref<Awaited<ReturnType<typeof pipelineApi.logs>>>()
 const selectedTask = ref<any>()
 const loading = ref(false)
@@ -107,7 +109,7 @@ const duration = computed(() => details.value?.started_at && details.value?.fini
 async function refresh() {
   loading.value = true
   try {
-    details.value = await pipelineApi.logs(name)
+    details.value = await pipelineApi.logs(projectId, name)
     selectedTask.value = details.value.tasks.find(task => task.name === selectedTask.value?.name)
       || details.value.tasks.find(task => task.status === 'Failed')
       || details.value.tasks[0]
@@ -127,9 +129,9 @@ async function retryRun() {
   if (!canRetry.value || retrying.value) return
   retrying.value = true
   try {
-    const result = await pipelineApi.retry(name)
+    const result = await pipelineApi.retry(projectId, name)
     ElMessage.success(`已提交重试执行 ${result.name}`)
-    window.location.href = `/pipelines/${result.name}`
+    window.location.href = `/devcenter/projects/${projectId}/pipelines/${result.name}`
   } catch (error) {
     ElMessage.error((error as Error).message)
   } finally {

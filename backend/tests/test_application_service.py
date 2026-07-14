@@ -54,10 +54,7 @@ class ApplicationServiceTest(unittest.TestCase):
         self.assertEqual(app.language, "nodejs")
         self.assertIsNotNone(app.project_id)
         self.assertEqual(app.application_spec["spec"]["runtime"]["framework"], "vite")
-        self.assertEqual(
-            app.application_spec["spec"]["build"]["image"],
-            "registry.local/frontend-console:latest",
-        )
+        self.assertIsNone(app.application_spec["spec"]["build"]["image"])
         environments = ApplicationEnvironment.query.filter_by(application_id=app.id).all()
         self.assertEqual([item.environment_name for item in environments], ["dev"])
 

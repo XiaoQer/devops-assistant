@@ -24,6 +24,8 @@ spec:
     - {name: config_map_name, type: string}
     - {name: secret_name, type: string}
     - {name: registry_secret_name, type: string}
+    - {name: kubeconfig_secret_name, type: string}
+    - {name: kube_context, type: string}
   workspaces: [{name: source}]
   tasks:
     - name: clone-and-test
@@ -77,27 +79,37 @@ spec:
           - {name: config_map}
           - {name: secret}
           - {name: registry_secret}
+          - {name: kubeconfig_secret_name}
+          - {name: kube_context}
+        volumes:
+          - name: target-kubeconfig
+            secret:
+              secretName: $(params.kubeconfig_secret_name)
         steps:
           - name: kubectl
             image: docker.io/alpine/k8s:1.31.0
+            volumeMounts:
+              - name: target-kubeconfig
+                mountPath: /var/run/aegis/kubeconfig
+                readOnly: true
             script: |
               set -e
-              kubectl -n "$(params.namespace)" create deployment "$(params.app)" --image="$(params.image)" --dry-run=client -o yaml | kubectl apply -f -
-              kubectl -n "$(params.namespace)" scale deployment "$(params.app)" --replicas="$(params.replicas)"
-              kubectl -n "$(params.namespace)" set resources deployment "$(params.app)" --requests="cpu=$(params.cpu_request),memory=$(params.memory_request)" --limits="cpu=$(params.cpu_limit),memory=$(params.memory_limit)"
-              kubectl -n "$(params.namespace)" set env deployment "$(params.app)" --from="configmap/$(params.config_map)"
-              kubectl -n "$(params.namespace)" set env deployment "$(params.app)" --from="secret/$(params.secret)"
+              kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" create deployment "$(params.app)" --image="$(params.image)" --dry-run=client -o yaml | kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" apply -f -
+              kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" scale deployment "$(params.app)" --replicas="$(params.replicas)"
+              kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" set resources deployment "$(params.app)" --requests="cpu=$(params.cpu_request),memory=$(params.memory_request)" --limits="cpu=$(params.cpu_limit),memory=$(params.memory_limit)"
+              kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" set env deployment "$(params.app)" --from="configmap/$(params.config_map)"
+              kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" set env deployment "$(params.app)" --from="secret/$(params.secret)"
               if [ "$(params.strategy)" = "Recreate" ]; then
-                kubectl -n "$(params.namespace)" patch deployment "$(params.app)" --type=merge -p '{"spec":{"strategy":{"type":"Recreate","rollingUpdate":null}}}'
+                kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" patch deployment "$(params.app)" --type=merge -p '{"spec":{"strategy":{"type":"Recreate","rollingUpdate":null}}}'
               else
-                kubectl -n "$(params.namespace)" patch deployment "$(params.app)" --type=merge -p '{"spec":{"strategy":{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":"$(params.max_unavailable)","maxSurge":"$(params.max_surge)"}}}}'
+                kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" patch deployment "$(params.app)" --type=merge -p '{"spec":{"strategy":{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":"$(params.max_unavailable)","maxSurge":"$(params.max_surge)"}}}}'
               fi
               if [ -n "$(params.registry_secret)" ]; then
-                kubectl -n "$(params.namespace)" patch deployment "$(params.app)" --type=merge -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"$(params.registry_secret)"}]}}}}'
+                kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" patch deployment "$(params.app)" --type=merge -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"$(params.registry_secret)"}]}}}}'
               fi
-              kubectl -n "$(params.namespace)" expose deployment "$(params.app)" --port="$(params.port)" --target-port="$(params.port)" --dry-run=client -o yaml | kubectl apply -f -
+              kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" expose deployment "$(params.app)" --port="$(params.port)" --target-port="$(params.port)" --dry-run=client -o yaml | kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" apply -f -
               if [ -n "$(params.ingress_host)" ]; then
-                kubectl -n "$(params.namespace)" create ingress "$(params.app)" --rule="$(params.ingress_host)/*=$(params.app):$(params.port)" --dry-run=client -o yaml | kubectl apply -f -
+                kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" create ingress "$(params.app)" --rule="$(params.ingress_host)/*=$(params.app):$(params.port)" --dry-run=client -o yaml | kubectl --kubeconfig=/var/run/aegis/kubeconfig/config --context="$(params.kube_context)" -n "$(params.namespace)" apply -f -
               fi
       params:
         - {name: app, value: $(params.app_name)}
@@ -116,3 +128,5 @@ spec:
         - {name: config_map, value: $(params.config_map_name)}
         - {name: secret, value: $(params.secret_name)}
         - {name: registry_secret, value: $(params.registry_secret_name)}
+        - {name: kubeconfig_secret_name, value: $(params.kubeconfig_secret_name)}
+        - {name: kube_context, value: $(params.kube_context)}

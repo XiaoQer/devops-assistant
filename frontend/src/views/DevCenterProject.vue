@@ -8,8 +8,8 @@
         :description="project.description || '围绕当前项目集中查看应用、流水线执行与发布活动。'"
       >
         <el-button @click="refresh" :loading="loading">刷新</el-button>
-        <el-button @click="router.push(`/projects/${project.id}`)">Project 详情</el-button>
-        <el-button type="primary" @click="router.push({ path: '/applications/new', query: { projectId: String(project.id) } })">＋ 新建应用</el-button>
+        <el-button @click="router.push(`/project-center/projects/${project.id}`)">Project 详情</el-button>
+        <el-button type="primary" @click="router.push(`/devcenter/projects/${project.id}/applications/new`)">＋ 新建应用</el-button>
       </PageHeader>
 
       <div class="metrics">
@@ -28,7 +28,7 @@
         <div class="summary-actions">
           <el-button @click="openPipelines">查看全部 Pipeline</el-button>
           <el-button @click="openReleases">查看全部 Releases</el-button>
-          <el-button type="primary" @click="router.push(`/projects/${project.id}`)">进入 Project 模块</el-button>
+          <el-button type="primary" @click="router.push(`/project-center/projects/${project.id}`)">进入 Project 模块</el-button>
         </div>
       </section>
 
@@ -55,12 +55,12 @@
                 <span class="soft-pill">{{ app.image_tag }}</span>
               </div>
               <div class="summary-actions compact">
-                <el-button @click="router.push(`/applications/${app.id}`)">进入应用</el-button>
+                <el-button @click="router.push(`/devcenter/projects/${project.id}/applications/${app.id}`)">进入应用</el-button>
               </div>
             </article>
           </div>
           <EmptyState v-else title="项目里还没有应用" description="请先在当前项目创建应用，DevCenter 才能承接服务发布流程。">
-            <el-button type="primary" @click="router.push({ path: '/applications/new', query: { projectId: String(project.id) } })">创建应用</el-button>
+            <el-button type="primary" @click="router.push(`/devcenter/projects/${project.id}/applications/new`)">创建应用</el-button>
           </EmptyState>
         </section>
 
@@ -73,7 +73,7 @@
             <el-button @click="openPipelines">查看全部</el-button>
           </div>
           <div v-if="pipelines.length" class="activity-list">
-            <article v-for="run in pipelines" :key="run.name" class="activity-card clickable" @click="router.push(`/pipelines/${run.name}`)">
+            <article v-for="run in pipelines" :key="run.name" class="activity-card clickable" @click="router.push(`/devcenter/projects/${project.id}/pipelines/${run.name}`)">
               <div>
                 <div class="activity-head">
                   <h4>{{ run.name }}</h4>
@@ -115,7 +115,7 @@
                 <span class="soft-pill">{{ format(release.created_at) }}</span>
               </div>
             </div>
-            <el-button v-if="release.pipeline_run_name" link @click="router.push(`/pipelines/${release.pipeline_run_name}`)">查看日志</el-button>
+            <el-button v-if="release.pipeline_run_name" link @click="router.push(`/devcenter/projects/${project.id}/pipelines/${release.pipeline_run_name}`)">查看日志</el-button>
           </article>
         </div>
         <EmptyState v-else title="还没有发布记录" description="当你在当前项目内完成部署后，Release 活动会自动沉淀在这里。" />
@@ -160,8 +160,8 @@ async function refresh() {
     const [projectData, appItems, pipelineData, releaseData] = await Promise.all([
       projectApi.get(id),
       projectApi.applications(id),
-      pipelineApi.list({ page: 1, pageSize: 6, projectId: id }),
-      releaseApi.list({ page: 1, pageSize: 6, projectId: id }),
+      pipelineApi.list(id, { page: 1, pageSize: 6 }),
+      releaseApi.list(id, { page: 1, pageSize: 6 }),
     ])
     project.value = projectData
     applications.value = appItems
@@ -179,11 +179,11 @@ async function refresh() {
 }
 
 function openPipelines() {
-  router.push({ path: '/pipelines', query: { projectId: String(projectId.value) } })
+  router.push(`/devcenter/projects/${projectId.value}/pipelines`)
 }
 
 function openReleases() {
-  router.push({ path: '/releases', query: { projectId: String(projectId.value) } })
+  router.push(`/devcenter/projects/${projectId.value}/releases`)
 }
 
 function format(value?: string) {
@@ -315,4 +315,3 @@ onMounted(async () => {
   }
 }
 </style>
-

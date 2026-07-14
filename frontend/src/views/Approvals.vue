@@ -64,7 +64,7 @@
                   <el-button type="primary" :loading="actingId === row.id" @click="approve(row)">批准并继续</el-button>
                   <el-button :loading="actingId === row.id" @click="reject(row)">拒绝</el-button>
                 </template>
-                <el-button v-if="row.pipeline_run_name" link @click="$router.push(`/pipelines/${row.pipeline_run_name}`)">查看 Pipeline</el-button>
+                <el-button v-if="row.pipeline_run_name" link @click="$router.push(`/devcenter/projects/${projectId}/pipelines/${row.pipeline_run_name}`)">查看 Pipeline</el-button>
                 <span v-else class="processed">{{ row.status === 'Pending' ? '等待操作' : '已处理' }}</span>
               </div>
             </article>
@@ -105,6 +105,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { approvalApi } from '../api/approval'
+import { useRoute } from 'vue-router'
 import type { Approval } from '../types'
 import PageHeader from '../components/common/PageHeader.vue'
 import MetricCard from '../components/common/MetricCard.vue'
@@ -112,6 +113,7 @@ import StatusBadge from '../components/common/StatusBadge.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 
 const items = ref<Approval[]>([])
+const projectId = Number(useRoute().params.projectId)
 const total = ref(0)
 const page = ref(1)
 const pageSize = 20
@@ -128,7 +130,7 @@ const rejectedCount = computed(() => items.value.filter(item => item.status === 
 async function load() {
   loading.value = true
   try {
-    const data = await approvalApi.list({ page: page.value, pageSize, status: status.value || undefined, environment: environment.value || undefined })
+    const data = await approvalApi.list(projectId, { page: page.value, pageSize, status: status.value || undefined, environment: environment.value || undefined })
     items.value = data.items
     total.value = data.total
   } finally {
@@ -140,7 +142,7 @@ async function approve(item: Approval) {
   const { value } = await ElMessageBox.prompt('可填写审批意见', '通过 Production 发布', { inputPlaceholder: '同意发布' })
   actingId.value = item.id
   try {
-    await approvalApi.approve(item.id, value)
+    await approvalApi.approve(projectId, item.id, value)
     ElMessage.success('审批通过，PipelineRun 已启动')
     load()
   } finally {
@@ -155,7 +157,7 @@ async function reject(item: Approval) {
   })
   actingId.value = item.id
   try {
-    await approvalApi.reject(item.id, value)
+    await approvalApi.reject(projectId, item.id, value)
     ElMessage.success('审批已拒绝')
     load()
   } finally {

@@ -1,3 +1,8 @@
+from pathlib import Path
+
+import pytest
+import yaml
+
 from app.services.tekton_service import TektonService
 
 
@@ -28,6 +33,8 @@ def test_pipeline_run_contains_source_workspace_and_target_namespace():
         "devops-platform",
         3000,
         deploy_namespace="staging",
+        kubeconfig_secret_name="aegis-kubeconfig-p1-c2",
+        kube_context="prod",
     )
     body = kubernetes.custom_api.args[-1]
     assert name == "demo-run-abc"
@@ -39,6 +46,56 @@ def test_pipeline_run_contains_source_workspace_and_target_namespace():
     ]
     params = {param["name"]: param["value"] for param in body["spec"]["params"]}
     assert params["namespace"] == "staging"
+    assert params["kubeconfig_secret_name"] == "aegis-kubeconfig-p1-c2"
+    assert params["kube_context"] == "prod"
+    assert "test-token" not in str(body).lower()
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "java-maven-kaniko-deploy.yaml",
+        "node-npm-kaniko-deploy.yaml",
+        "dockerfile-kaniko-deploy.yaml",
+    ],
+)
+def test_only_deploy_task_mounts_target_kubeconfig(filename):
+    path = Path(__file__).parents[2] / "deploy" / "tekton" / "pipelines" / filename
+    pipeline = yaml.safe_load(path.read_text())
+    pipeline_params = {item["name"] for item in pipeline["spec"]["params"]}
+    assert {"kubeconfig_secret_name", "kube_context"} <= pipeline_params
+
+    tasks = {item["name"]: item for item in pipeline["spec"]["tasks"]}
+    deploy = tasks["deploy"]
+    volumes = deploy["taskSpec"]["volumes"]
+    assert volumes == [
+        {
+            "name": "target-kubeconfig",
+            "secret": {"secretName": "$(params.kubeconfig_secret_name)"},
+        }
+    ]
+    deploy_step = deploy["taskSpec"]["steps"][0]
+    assert deploy_step["volumeMounts"] == [
+        {
+            "name": "target-kubeconfig",
+            "mountPath": "/var/run/aegis/kubeconfig",
+            "readOnly": True,
+        }
+    ]
+    assert (
+        'kubectl --kubeconfig=/var/run/aegis/kubeconfig/config '
+        '--context="$(params.kube_context)" -n "$(params.namespace)"'
+        in deploy_step["script"]
+    )
+
+    deploy_params = {item["name"]: item["value"] for item in deploy["params"]}
+    assert deploy_params["kubeconfig_secret_name"] == "$(params.kubeconfig_secret_name)"
+    assert deploy_params["kube_context"] == "$(params.kube_context)"
+
+    for name, task in tasks.items():
+        if name == "deploy":
+            continue
+        assert "target-kubeconfig" not in str(task)
 
 
 def test_configured_registry_secret_is_required():
@@ -101,4 +158,3 @@ def test_retry_pipeline_run_rejects_non_failed_runs():
         raise AssertionError("expected retry to be rejected for succeeded runs")
     except ValueError as exc:
         assert str(exc) == "只有失败或取消的 PipelineRun 才能重试"
-

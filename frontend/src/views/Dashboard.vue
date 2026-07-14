@@ -101,19 +101,19 @@
           </div>
         </div>
         <div class="quick-actions">
-          <button @click="$router.push('/applications/new')">
+          <button @click="$router.push(`/devcenter/projects/${projectId}/applications/new`)" :disabled="!projectId">
             <strong>Create application</strong>
             <span>从仓库创建一个新的服务工作区</span>
           </button>
-          <button @click="$router.push('/releases')">
+          <button @click="$router.push(`/devcenter/projects/${projectId}/releases`)" :disabled="!projectId">
             <strong>Review releases</strong>
             <span>查看发布历史、回滚与交付轨迹</span>
           </button>
-          <button @click="$router.push('/approvals')">
+          <button @click="$router.push(`/devcenter/projects/${projectId}/approvals`)" :disabled="!projectId">
             <strong>Handle approvals</strong>
             <span>快速处理 Production 变更申请</span>
           </button>
-          <button @click="$router.push('/pipelines')">
+          <button @click="$router.push(`/devcenter/projects/${projectId}/pipelines`)" :disabled="!projectId">
             <strong>Inspect pipelines</strong>
             <span>定位失败构建或进行中的执行</span>
           </button>
@@ -129,6 +129,7 @@ import { useRouter } from 'vue-router'
 import { useApplicationStore } from '../stores/application'
 import { applicationApi } from '../api/application'
 import { useCommandCenter } from '../composables/useCommandCenter'
+import { useProjectStore } from '../stores/project'
 import type { Release } from '../types'
 import MetricCard from '../components/common/MetricCard.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
@@ -136,12 +137,14 @@ import EmptyState from '../components/common/EmptyState.vue'
 
 const router = useRouter()
 const store = useApplicationStore()
+const projectStore = useProjectStore()
 const loading = ref(false)
 const releases = ref<Release[]>([])
 const command = ref('')
 const { quickPrompts, runIntent, openPalette } = useCommandCenter()
+const projectId = computed(() => projectStore.activeProjectId || store.items[0]?.project_id || 0)
 
-const executions = computed(() => store.items.flatMap(a => a.latest_execution ? [{ ...a.latest_execution, appName: a.name }] : []))
+const executions = computed(() => store.items.flatMap(a => a.latest_execution ? [{ ...a.latest_execution, appName: a.name, project_id: a.project_id }] : []))
 const pipelineCount = computed(() => executions.value.length)
 const failedCount = computed(() => executions.value.filter(e => e.status === 'Failed').length)
 const healthyCount = computed(() => executions.value.filter(e => e.status === 'Succeeded').length)
@@ -158,14 +161,14 @@ const suggestedActions = computed(() => [
     title: failedCount.value ? `有 ${failedCount.value} 条失败执行等待处理` : '当前没有失败执行',
     description: failedCount.value ? '优先查看最近失败的 Pipeline 与发布记录，缩短恢复时间。' : '你可以继续推进今天的发布计划。',
     cta: failedCount.value ? '查看 pipelines' : '查看发布中心',
-    run: () => router.push(failedCount.value ? '/pipelines' : '/releases'),
+    run: () => router.push(failedCount.value ? `/devcenter/projects/${projectId.value}/pipelines` : `/devcenter/projects/${projectId.value}/releases`),
   },
   {
     tag: runningCount.value ? 'Live' : 'Flow',
     title: runningCount.value ? `${runningCount.value} 个交付流程正在进行` : '没有进行中的部署',
     description: runningCount.value ? '检查进行中的发布，确认是否需要人工关注或等待审批。' : '可以发起新的部署或创建一个新应用。',
     cta: runningCount.value ? '查看运行' : '创建应用',
-    run: () => router.push(runningCount.value ? '/pipelines' : '/applications/new'),
+    run: () => router.push(runningCount.value ? `/devcenter/projects/${projectId.value}/pipelines` : `/devcenter/projects/${projectId.value}/applications/new`),
   },
   {
     tag: 'AI',
@@ -185,7 +188,7 @@ const activityFeed = computed(() => {
     status: item.status,
     tone: item.status === 'Failed' ? 'danger' : item.status === 'Succeeded' ? 'success' : 'info',
     time: formatTime(item.created_at),
-    path: `/pipelines/${item.pipeline_run_name}`,
+    path: `/devcenter/projects/${item.project_id || projectId.value}/pipelines/${item.pipeline_run_name}`,
   }))
 
   const releaseActivities = releases.value.slice(0, 6).map(item => ({
@@ -196,7 +199,7 @@ const activityFeed = computed(() => {
     status: item.deploy_status,
     tone: item.deploy_status === 'Failed' ? 'danger' : item.deploy_status === 'Succeeded' ? 'success' : 'warning',
     time: formatTime(item.created_at),
-    path: '/releases',
+    path: `/devcenter/projects/${projectId.value}/releases`,
   }))
 
   return [...pipelineActivities, ...releaseActivities]
@@ -224,7 +227,7 @@ async function refresh() {
   loading.value = true
   try {
     await store.load()
-    const data = await Promise.all(store.items.slice(0, 8).map(a => applicationApi.releases(a.id).catch(() => [])))
+    const data = await Promise.all(store.items.slice(0, 8).map(a => applicationApi.releases(a.project_id!, a.id).catch(() => [])))
     releases.value = data.flat().sort((a, b) => b.created_at.localeCompare(a.created_at))
   } finally {
     loading.value = false

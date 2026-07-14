@@ -1,6 +1,6 @@
 # 功能：基于分支提交的多环境构建与发布
 
-- 状态：设计已确认，待实现
+- 状态：当前阶段已实现；Digest 与后台常驻协调延期
 - 创建日期：2026-07-14
 - 关联设计：`docs/superpowers/specs/2026-07-14-application-multi-environment-release-design.md`
 
@@ -29,7 +29,8 @@
 - 提交信息和作者
 - 目标环境集合
 
-构建成功后所有目标环境复用同一个镜像版本，优先使用镜像 Digest 作为不可变交付依据。
+构建成功后所有目标环境复用同一个镜像版本。当前阶段以镜像 Tag 作为交付依据，Digest
+采集与优先使用延期。
 
 ## 范围
 
@@ -93,13 +94,15 @@
 
 ### Delivery Reconciler
 
-Reconciler 监听带有发布批次标识的 BuildVersion/PipelineRun：
+当前阶段由发布批次、Pipeline flow 和批次详情请求触发 Reconciler：
 
 - 构建成功后，为每个目标环境创建独立 Deploy-only PipelineRun。
 - 构建失败时，不创建任何部署 PipelineRun。
 - 每个环境只使用同一 BuildVersion 的镜像 Tag/Digest。
 - 每个环境的失败、成功、等待审批和上下文失效独立持久化。
 - Reconciler 重复处理同一批次时必须幂等，不能重复创建同一环境的部署任务。
+
+后台常驻 Worker、Tekton 事件监听和镜像 Digest 自动采集不属于当前阶段。
 
 ### 环境上下文
 
@@ -142,23 +145,23 @@ Project/Cluster 交付上下文边界。
 
 ## 验收条件
 
-- [ ] 发布弹窗可以加载并切换公共仓库分支。
-- [ ] 切换分支后加载最近 20 条提交，默认选中最新提交。
-- [ ] 发布前必须选择一个提交和至少一个环境。
-- [ ] 一次发布请求只创建一个 Build PipelineRun。
-- [ ] Build Pipeline 按指定 commit 构建，而不是按提交时的 branch HEAD 构建。
-- [ ] 构建成功后所有目标环境复用同一个 BuildVersion 镜像 Tag/Digest。
-- [ ] 每个环境使用自身 Kubernetes 集群、context、Namespace 和环境变量。
-- [ ] 一个环境失败不阻断其他环境继续发布。
-- [ ] 构建失败时不创建 Deploy-only PipelineRun。
-- [ ] 生产审批记录具体 BuildVersion 和 Environment，审批等待不阻断其他环境。
-- [ ] Reconciler 重试和重复扫描不会重复创建环境部署任务。
-- [ ] 发布历史能关联 branch、commit、BuildVersion 和环境部署记录。
-- [ ] 资源越权、无效提交、无效环境和失效交付上下文均被服务端拒绝。
-- [ ] 相关后端测试、前端类型检查、生产构建和 `./scripts/verify.sh` 通过。
+- [x] 发布弹窗可以加载并切换公共仓库分支。
+- [x] 切换分支后加载最近 20 条提交，默认选中最新提交。
+- [x] 发布前必须选择一个提交和至少一个环境。
+- [x] 一次发布请求只创建一个 Build PipelineRun。
+- [x] Build Pipeline 按指定 commit 构建，而不是按提交时的 branch HEAD 构建。
+- [x] 构建成功后所有目标环境复用同一个 BuildVersion 镜像 Tag。
+- [x] 每个环境使用自身 Kubernetes 集群、context、Namespace 和环境变量。
+- [x] 一个环境失败不阻断其他环境继续发布。
+- [x] 构建失败时不创建 Deploy-only PipelineRun。
+- [x] 生产审批记录具体 BuildVersion 和 Environment，审批等待不阻断其他环境。
+- [x] Reconciler 重试和重复扫描不会重复创建环境部署任务。
+- [x] 发布历史能关联 branch、commit、BuildVersion 和环境部署记录。
+- [x] 资源越权、无效提交、无效环境和失效交付上下文均被服务端拒绝。
+- [x] 相关后端测试、前端类型检查、生产构建和 `./scripts/verify.sh` 通过。
 
 ## 已知风险与后续
 
 - 当前只支持公共仓库；私有仓库凭据作为独立规格处理。
 - Reconciler 需要可靠的周期扫描或事件触发机制，并需要记录幂等游标或环境任务关联。
-- 镜像 Digest 只有在构建完成并可查询时才能写入，Tag 作为过渡字段保留。
+- 镜像 Digest、后台常驻 Reconciler 和审批期间完整上下文漂移校验延期，不纳入当前阶段验收。

@@ -40,9 +40,10 @@
 - 应用环境和配置的增删改查、克隆、比较与导出。
 - Application Environment 配置中心支持按环境管理环境变量、ConfigMap、Secret、资源参数
   和 Ingress；配置值加密保存并在目标环境发布时物化为 Kubernetes 配置资源和工作负载参数。
+  当前产品界面仅开放环境变量，ConfigMap、Secret、资源参数和 Ingress 作为保留能力。
 - 部署计划、Tekton PipelineRun 创建、重试、结构化状态和日志。
-- Application 构建版本与 Build once/Promote 流程：Build Pipeline 只构建并推送镜像，发布使用已成功构建版本执行 Deploy-only Pipeline；同一构建版本可连续发布到多个环境，生产发布审批关联具体构建版本。
-- Application 发布批次支持从公共 Git 仓库切换分支，读取最近 20 条提交，选择一个提交并多选环境；一次 Build Pipeline 产出构建版本，Delivery Reconciler 按环境 fan-out Deploy-only PipelineRun，复用同一镜像并独立记录环境状态，生产环境审批只阻断对应目标。
+- Application 构建版本与 Build once/Promote 流程：Build Pipeline 只构建并推送镜像，发布使用已成功构建版本执行 Deploy-only Pipeline；同一构建版本可连续发布到多个环境，生产发布审批关联具体构建版本。当前阶段以镜像 Tag 作为交付依据，Digest 采集延期。
+- Application 发布批次支持从公共 Git 仓库切换分支，读取最近 20 条提交，选择一个提交并多选环境；一次 Build Pipeline 产出构建版本，Delivery Reconciler 按环境 fan-out Deploy-only PipelineRun，复用同一镜像并独立记录环境状态，生产环境审批只阻断对应目标。当前 Reconciler 由批次和 Pipeline flow 请求触发，后台常驻调度延期。
 - 发布历史、回滚流程和交付状态同步。
 - Application Environment 已解析为 Project 交付上下文：环境由用户在 Application 工作区
   中显式创建、编辑和删除，不再自动补建 dev；已绑定且连接成功的 Kubernetes 集群作为唯一
@@ -66,7 +67,7 @@
 ## Harness 基线验证结果
 
 - `./scripts/verify.sh` 于 2026-07-13 执行成功。
-- 后端 127 个测试全部通过。
+- 后端 178 个测试全部通过。
 - 前端类型检查和生产构建通过。
 - 后端测试产生 68 条警告：24 条 Flask-SQLAlchemy `get_engine()` 弃用警告和
   44 条 SQLAlchemy `Query.get()` 旧 API 警告。
@@ -117,5 +118,5 @@
 
 ## 下一个 Harness 里程碑
 
-完善 Delivery Reconciler 的后台调度与重试：当前已提供按发布批次触发的协调逻辑，后续接入
-常驻 worker/定时任务，继续逐步移除中央集群中的持久 kubeconfig Secret。
+后续可选增强：完善 Delivery Reconciler 的后台调度与重试、镜像 Digest 采集和审批期间的
+完整交付上下文漂移校验。当前阶段不开发这些能力。

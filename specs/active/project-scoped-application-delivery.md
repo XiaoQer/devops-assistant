@@ -24,8 +24,8 @@ Project 已经能够管理成员、Kubernetes 集群和 OCI Registry。Applicati
   仅负责 Tekton 与构建凭据。
 - 发布计划、直接发布和审批通过都会校验 Cluster/Registry 的启用状态及最近连接状态。
 - 前端交付导航、API 和 Pipeline/Release/Approval 链接都保留当前 Project 上下文。
-- 当前 Tekton Pipeline 在中央集群中执行构建、镜像推送和目标集群部署；Delivery Reconciler
-  延后至下一阶段。
+- 当前 Tekton Pipeline 在中央集群中执行构建、镜像推送和目标集群部署；发布批次完成构建后，
+  由第一版 Delivery Reconciler 按环境创建 Deploy-only PipelineRun。
 
 相关证据包括：
 
@@ -66,8 +66,8 @@ deploy Task 挂载该 Secret，并显式选择 Environment 保存的 kube contex
 
 ## 非目标
 
-- 不包含 Delivery Reconciler；该能力作为下一阶段设计，由平台在构建完成后直接连接目标
-  集群部署，并移除中央集群中的持久 kubeconfig Secret。
+- 不包含 Delivery Reconciler 的后台常驻 Worker、事件监听和持久 kubeconfig Secret 的移除；
+  当前阶段保留按请求触发的 Reconciler 与中央 Tekton kubeconfig Secret。
 - 不包含 ProjectMember 与登录用户的身份绑定和角色授权；本阶段所有操作仍要求登录，并
   只实现资源作用域隔离。
 - 不包含 Project GitHub Organization、Team 或 Repo Group 对仓库地址的强制校验。
@@ -102,8 +102,8 @@ deploy Task 挂载该 Secret，并显式选择 Environment 保存的 kube contex
 - [x] Alembic migration 能升级和降级，历史记录的 Project 与交付目标关联得到保留。
 - [x] 后端相关自动化检查、前端类型检查、生产构建和 `./scripts/verify.sh` 全部通过。
 - [x] `docs/current-state.md` 在实现并验证完成后反映最终能力和已知缺口。
-- [ ] 构建版本只创建 Build PipelineRun；发布已有构建版本时只创建 Deploy-only PipelineRun，且同一版本可发布到多个 Environment。
-- [ ] 生产审批记录具体 `build_version_id`，审批通过后不重复执行构建。
+- [x] 构建版本只创建 Build PipelineRun；发布已有构建版本时只创建 Deploy-only PipelineRun，且同一版本可发布到多个 Environment。
+- [x] 生产审批记录具体 `build_version_id`，审批通过后不重复执行构建。
 
 ## 设计说明
 

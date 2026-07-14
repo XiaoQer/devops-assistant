@@ -41,6 +41,9 @@ class DeploymentPlanServiceTest(unittest.TestCase):
         create_user(db, User)
         _response, auth = login(self.client)
         self.csrf_token = auth["csrf_token"]
+        self.project = Project(key="default", name="Default Project")
+        db.session.add(self.project)
+        db.session.commit()
 
     def tearDown(self):
         db.session.remove()
@@ -49,6 +52,7 @@ class DeploymentPlanServiceTest(unittest.TestCase):
 
     def _create_application(self, *, build_type="maven"):
         app = Application(
+            project_id=self.project.id,
             name=f"payment-service-{Application.query.count() + 1}",
             repo_url="https://github.com/example/payment-service.git",
             branch="main",
@@ -92,6 +96,7 @@ class DeploymentPlanServiceTest(unittest.TestCase):
         ))
         db.session.add(ReleaseRecord(
             application_id=app.id,
+            project_id=app.project_id,
             release_type="deploy",
             environment="prod",
             git_repo=app.repo_url,

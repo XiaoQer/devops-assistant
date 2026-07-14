@@ -2,7 +2,7 @@ import unittest
 
 from app import create_app
 from app.extensions import db
-from app.models import Application
+from app.models import Application, Project
 from app.services.ai_assistant_service import AiAssistantService
 
 
@@ -22,7 +22,11 @@ class AiAssistantServiceTest(unittest.TestCase):
         self.app = create_app(TestConfig)
         self.context = self.app.app_context()
         self.context.push()
+        project = Project(key="payments", name="Payments")
+        db.session.add(project)
+        db.session.flush()
         application = Application(
+            project_id=project.id,
             name="payment-service",
             repo_url="https://github.com/example/payment-service.git",
             branch="main",
@@ -60,4 +64,3 @@ class AiAssistantServiceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

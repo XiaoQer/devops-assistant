@@ -2,7 +2,7 @@ import unittest
 
 from app import create_app
 from app.extensions import db
-from app.models import Application, ApplicationEnvironment
+from app.models import Application, ApplicationEnvironment, Project
 from app.services.environment_service import EnvironmentService
 from app.utils.errors import ApiError
 
@@ -23,7 +23,11 @@ class EnvironmentServiceTest(unittest.TestCase):
         self.app = create_app(TestConfig)
         self.context = self.app.app_context()
         self.context.push()
+        project = Project(key="gateway", name="Gateway Project")
+        db.session.add(project)
+        db.session.flush()
         self.application = Application(
+            project_id=project.id,
             name="gateway",
             repo_url="https://github.com/example/gateway.git",
             branch="main",

@@ -97,6 +97,7 @@ class ApplicationServiceTest(unittest.TestCase):
         }
         create_pipeline_run.return_value = "payment-service-run-001"
         app = Application(
+            project_id=self.project.id,
             name="payment-service",
             repo_url="https://github.com/example/payment-service.git",
             branch="main",
@@ -127,9 +128,30 @@ class ApplicationServiceTest(unittest.TestCase):
 
         self.assertEqual(execution.pipeline_run_name, "payment-service-run-001")
         self.assertEqual(execution.image_url, "registry.local/payment-service:2026.07.02")
+        self.assertEqual(execution.project_id, self.project.id)
+        self.assertEqual(execution.environment, "staging")
+        self.assertIsNone(execution.kubernetes_cluster_id)
+        self.assertEqual(execution.deploy_namespace, "payment-service-staging")
+        serialized_execution = execution.to_dict()
+        self.assertEqual(serialized_execution["project_id"], self.project.id)
+        self.assertEqual(serialized_execution["environment"], "staging")
+        self.assertIsNone(serialized_execution["kubernetes_cluster_id"])
+        self.assertEqual(
+            serialized_execution["deploy_namespace"], "payment-service-staging"
+        )
+        self.assertFalse(
+            {"kubeconfig", "credentials", "password", "secret", "token"}
+            & serialized_execution.keys()
+        )
         self.assertEqual(release.environment, "staging")
         self.assertEqual(release.deploy_namespace, "payment-service-staging")
         self.assertEqual(release.deploy_user, "alice")
+        serialized_release = release.to_dict()
+        self.assertIn("kubernetes_cluster_id", serialized_release)
+        self.assertFalse(
+            {"kubeconfig", "credentials", "password", "secret", "token"}
+            & serialized_release.keys()
+        )
         self.assertEqual(app.status, "deploying")
         self.assertEqual(app.image_tag, "2026.07.02")
         self.assertEqual(ReleaseRecord.query.count(), 1)

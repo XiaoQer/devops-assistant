@@ -9,7 +9,7 @@ class ReleaseRecord(db.Model):
     application_id = db.Column(
         db.Integer, db.ForeignKey("applications.id"), nullable=False, index=True
     )
-    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=False)
     release_type = db.Column(db.String(20), default="deploy", nullable=False)
     environment = db.Column(db.String(30), default="dev", nullable=False, index=True)
     git_repo = db.Column(db.String(500), nullable=False)
@@ -19,6 +19,9 @@ class ReleaseRecord(db.Model):
     image_tag = db.Column(db.String(120), nullable=False)
     pipeline_run_name = db.Column(db.String(253), index=True)
     deploy_namespace = db.Column(db.String(120), nullable=False)
+    kubernetes_cluster_id = db.Column(
+        db.Integer, db.ForeignKey("kubernetes_clusters.id"), nullable=True
+    )
     deploy_status = db.Column(db.String(30), default="Pending", nullable=False)
     deploy_user = db.Column(db.String(120), default="local-user", nullable=False)
     source_release_id = db.Column(db.Integer, db.ForeignKey("release_records.id"))
@@ -48,6 +51,7 @@ class ReleaseRecord(db.Model):
             "image": self.image,
             "pipeline_run_name": self.pipeline_run_name,
             "deploy_namespace": self.deploy_namespace,
+            "kubernetes_cluster_id": self.kubernetes_cluster_id,
             "deploy_status": self.deploy_status,
             "deploy_user": self.deploy_user,
             "source_release_id": self.source_release_id,
@@ -55,4 +59,3 @@ class ReleaseRecord(db.Model):
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "error_message": self.error_message,
         }
-

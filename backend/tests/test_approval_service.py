@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from app import create_app
 from app.extensions import db
-from app.models import Application, ApplicationEnvironment, ApprovalRecord
+from app.models import Application, ApplicationEnvironment, ApprovalRecord, Project
 from app.services.approval_service import ApprovalService
 from app.utils.errors import ApiError
 
@@ -25,7 +25,11 @@ class ApprovalServiceTest(unittest.TestCase):
         self.app = create_app(TestConfig)
         self.context = self.app.app_context()
         self.context.push()
+        self.project = Project(key="delivery", name="Delivery Project")
+        db.session.add(self.project)
+        db.session.flush()
         self.application = Application(
+            project_id=self.project.id,
             name="payment-service",
             repo_url="https://github.com/example/payment-service.git",
             branch="main",
@@ -61,6 +65,13 @@ class ApprovalServiceTest(unittest.TestCase):
 
         self.assertEqual(first.id, second.id)
         self.assertEqual(ApprovalRecord.query.count(), 1)
+        serialized = first.to_dict()
+        self.assertEqual(serialized["project_id"], self.project.id)
+        self.assertIn("kubernetes_cluster_id", serialized)
+        self.assertFalse(
+            {"kubeconfig", "credentials", "password", "secret", "token"}
+            & serialized.keys()
+        )
 
     @patch("app.services.approval_service.ApplicationService.deploy")
     def test_approve_marks_record_and_links_pipeline_run(self, deploy):

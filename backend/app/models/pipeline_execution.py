@@ -9,6 +9,14 @@ class PipelineExecution(db.Model):
     application_id = db.Column(
         db.Integer, db.ForeignKey("applications.id"), nullable=False, index=True
     )
+    project_id = db.Column(
+        db.Integer, db.ForeignKey("projects.id"), nullable=False, index=True
+    )
+    environment = db.Column(db.String(30), nullable=False, default="dev", index=True)
+    kubernetes_cluster_id = db.Column(
+        db.Integer, db.ForeignKey("kubernetes_clusters.id"), nullable=True
+    )
+    deploy_namespace = db.Column(db.String(120), nullable=False, default="default")
     pipeline_run_name = db.Column(db.String(253), nullable=False, unique=True)
     status = db.Column(db.String(30), default="Pending")
     started_at = db.Column(db.DateTime(timezone=True))
@@ -27,6 +35,10 @@ class PipelineExecution(db.Model):
         return {
             "id": self.id,
             "application_id": self.application_id,
+            "project_id": self.project_id,
+            "environment": self.environment,
+            "kubernetes_cluster_id": self.kubernetes_cluster_id,
+            "deploy_namespace": self.deploy_namespace,
             "pipeline_run_name": self.pipeline_run_name,
             "status": self.status,
             "started_at": self.started_at.isoformat() if self.started_at else None,
@@ -36,4 +48,3 @@ class PipelineExecution(db.Model):
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
-

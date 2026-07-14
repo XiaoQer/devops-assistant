@@ -9,9 +9,12 @@ class ApprovalRecord(db.Model):
     application_id = db.Column(
         db.Integer, db.ForeignKey("applications.id"), nullable=False, index=True
     )
-    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=False)
     environment = db.Column(db.String(30), nullable=False, index=True)
     namespace = db.Column(db.String(120), nullable=False)
+    kubernetes_cluster_id = db.Column(
+        db.Integer, db.ForeignKey("kubernetes_clusters.id"), nullable=True
+    )
     image_name = db.Column(db.String(300), nullable=False)
     image_tag = db.Column(db.String(120), nullable=False)
     git_branch = db.Column(db.String(120))
@@ -38,6 +41,7 @@ class ApprovalRecord(db.Model):
             "project_id": self.project_id,
             "environment": self.environment,
             "namespace": self.namespace,
+            "kubernetes_cluster_id": self.kubernetes_cluster_id,
             "image_name": self.image_name,
             "image_tag": self.image_tag,
             "image": f"{self.image_name}:{self.image_tag}",
@@ -53,4 +57,3 @@ class ApprovalRecord(db.Model):
             "rejected_at": self.rejected_at.isoformat() if self.rejected_at else None,
             "updated_at": self.updated_at.isoformat(),
         }
-

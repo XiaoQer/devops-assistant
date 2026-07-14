@@ -31,7 +31,11 @@ class RouteValidationTest(unittest.TestCase):
         create_user(db, User)
         _response, auth = login(self.client)
         self.csrf_token = auth["csrf_token"]
+        project = Project(key="payments", name="Payments")
+        db.session.add(project)
+        db.session.flush()
         db.session.add(Application(
+            project_id=project.id,
             name="payment-service",
             repo_url="https://github.com/example/payment-service.git",
             branch="main",
@@ -44,8 +48,6 @@ class RouteValidationTest(unittest.TestCase):
             port=8080,
             status="Running",
         ))
-        project = Project(key="payments", name="Payments")
-        db.session.add(project)
         db.session.commit()
         self.project_id = project.id
 

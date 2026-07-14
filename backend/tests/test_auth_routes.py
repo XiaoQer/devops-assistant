@@ -8,6 +8,7 @@ from app.models import (
     Application,
     ApplicationConfig,
     ApplicationEnvironment,
+    Project,
     ReleaseRecord,
     User,
     UserSession,
@@ -256,7 +257,11 @@ class AuthRoutesTest(unittest.TestCase):
         )
 
     def _create_application_delivery_records(self):
+        project = Project(key="trusted-actor", name="Trusted Actor Project")
+        db.session.add(project)
+        db.session.flush()
         app = Application(
+            project_id=project.id,
             name="trusted-actor-app",
             repo_url="https://github.com/example/trusted-actor-app.git",
             branch="main",
@@ -279,6 +284,7 @@ class AuthRoutesTest(unittest.TestCase):
         )
         source_release = ReleaseRecord(
             application_id=app.id,
+            project_id=project.id,
             release_type="deploy",
             environment="dev",
             git_repo=app.repo_url,
@@ -291,6 +297,7 @@ class AuthRoutesTest(unittest.TestCase):
         )
         approval = ApprovalRecord(
             application_id=app.id,
+            project_id=project.id,
             environment="dev",
             namespace=environment.namespace,
             image_name=app.image_name,

@@ -128,6 +128,12 @@ class ApplicationService:
         )
         execution = PipelineExecution(
             application_id=app.id,
+            project_id=app.project_id,
+            environment=environment_name,
+            kubernetes_cluster_id=(
+                environment.kubernetes_cluster_id if environment else None
+            ),
+            deploy_namespace=deploy_namespace,
             pipeline_run_name=run_name,
             image_url=f"{image_name}:{image_tag}",
         )

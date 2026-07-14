@@ -6,7 +6,7 @@ class Application(db.Model):
     __tablename__ = "applications"
 
     id = db.Column(db.Integer, primary_key=True)
-    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=False)
     name = db.Column(db.String(120), nullable=False)
     repo_url = db.Column(db.String(500), nullable=False)
     branch = db.Column(db.String(120), default="main", nullable=False)

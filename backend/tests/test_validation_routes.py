@@ -93,7 +93,10 @@ class RouteValidationTest(unittest.TestCase):
 
     def test_create_application_requires_name_and_repo_url(self):
         response = csrf_post(
-            self.client, "/api/applications", self.csrf_token, json={}
+            self.client,
+            f"/api/projects/{self.project_id}/applications",
+            self.csrf_token,
+            json={},
         )
 
         self.assertEqual(response.status_code, 400)
@@ -102,7 +105,12 @@ class RouteValidationTest(unittest.TestCase):
         self.assertEqual(body["error"]["details"]["fields"], ["name", "repo_url"])
 
     def test_submit_approval_requires_application_id(self):
-        response = csrf_post(self.client, "/api/approvals", self.csrf_token, json={})
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_id}/approvals",
+            self.csrf_token,
+            json={},
+        )
 
         self.assertEqual(response.status_code, 400)
         body = response.get_json()
@@ -110,7 +118,9 @@ class RouteValidationTest(unittest.TestCase):
         self.assertEqual(body["error"]["details"]["field"], "application_id")
 
     def test_compare_environments_requires_query_params(self):
-        response = self.client.get("/api/applications/1/environments/compare")
+        response = self.client.get(
+            f"/api/projects/{self.project_id}/applications/1/environments/compare"
+        )
 
         self.assertEqual(response.status_code, 400)
         body = response.get_json()
@@ -218,7 +228,10 @@ class RouteValidationTest(unittest.TestCase):
 
     def test_deploy_plan_requires_explicit_environment(self):
         response = csrf_post(
-            self.client, "/api/applications/1/deploy/plan", self.csrf_token, json={}
+            self.client,
+            f"/api/projects/{self.project_id}/applications/1/deploy/plan",
+            self.csrf_token,
+            json={},
         )
 
         self.assertEqual(response.status_code, 400)
@@ -228,7 +241,10 @@ class RouteValidationTest(unittest.TestCase):
 
     def test_deploy_requires_explicit_environment(self):
         response = csrf_post(
-            self.client, "/api/applications/1/deploy", self.csrf_token, json={}
+            self.client,
+            f"/api/projects/{self.project_id}/applications/1/deploy",
+            self.csrf_token,
+            json={},
         )
 
         self.assertEqual(response.status_code, 400)

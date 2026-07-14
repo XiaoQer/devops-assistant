@@ -1,11 +1,12 @@
 from flask import Blueprint, g, request
 
-from app.models import Application, ApplicationEnvironment, ReleaseRecord
+from app.models import Application, ApplicationEnvironment
 from app.services.application_service import ApplicationService
 from app.services.deployment_plan_service import DeploymentPlanService
 from app.services.kubernetes_service import KubernetesService
 from app.services.release_service import ReleaseService
 from app.services.approval_service import ApprovalService
+from app.services.project_service import ProjectService
 from app.utils.errors import ApiError
 from app.utils.response import success
 from app.utils.validation import (
@@ -16,43 +17,46 @@ from app.utils.validation import (
 )
 from app.extensions import db
 
-bp = Blueprint("applications", __name__, url_prefix="/api/applications")
+bp = Blueprint(
+    "applications",
+    __name__,
+    url_prefix="/api/projects/<int:project_id>/applications",
+)
 
 
-def get_application(app_id):
-    app = Application.query.get(app_id)
-    if not app:
-        raise ApiError("应用不存在", 404, "APPLICATION_NOT_FOUND")
-    return app
+def get_application(project_id, app_id):
+    return ApplicationService().get(project_id, app_id)
 
 
 @bp.get("")
-def list_applications():
-    query = Application.query
-    project_id = request.args.get("projectId", type=int)
-    if project_id:
-        query = query.filter_by(project_id=project_id)
-    apps = query.order_by(Application.created_at.desc()).all()
+def list_applications(project_id):
+    ProjectService().get(project_id)
+    apps = (
+        Application.query.filter_by(project_id=project_id)
+        .order_by(Application.created_at.desc())
+        .all()
+    )
     return success([app.to_dict(include_spec=False) for app in apps])
 
 
 @bp.post("")
-def create_application():
+def create_application(project_id):
     payload = json_object(request.get_json(silent=True), required=True)
     require_fields(payload, "name", "repo_url")
-    app = ApplicationService().create(payload)
+    project = ProjectService().get(project_id)
+    app = ApplicationService().create(project, payload)
     return success(app.to_dict(), "应用分析完成", 201)
 
 
 @bp.get("/<int:app_id>")
-def application_detail(app_id):
-    return success(get_application(app_id).to_dict())
+def application_detail(project_id, app_id):
+    return success(get_application(project_id, app_id).to_dict())
 
 
 @bp.post("/<int:app_id>/deploy")
-def deploy_application(app_id):
+def deploy_application(project_id, app_id):
     payload = json_object(request.get_json(silent=True))
-    app = get_application(app_id)
+    app = get_application(project_id, app_id)
     environment_name = require_string(payload, "environment")
     payload["environment"] = environment_name
     plan = DeploymentPlanService().build_plan(app, payload)
@@ -89,34 +93,38 @@ def deploy_application(app_id):
 
 
 @bp.post("/<int:app_id>/deploy/plan")
-def deployment_plan(app_id):
+def deployment_plan(project_id, app_id):
     payload = json_object(request.get_json(silent=True))
-    app = get_application(app_id)
+    app = get_application(project_id, app_id)
     payload["environment"] = require_string(payload, "environment")
     return success(DeploymentPlanService().build_plan(app, payload), "发布计划生成完成")
 
 
 @bp.get("/<int:app_id>/executions")
-def list_executions(app_id):
-    app = get_application(app_id)
-    return success([execution.to_dict() for execution in app.executions])
+def list_executions(project_id, app_id):
+    app = get_application(project_id, app_id)
+    return success([
+        execution.to_dict()
+        for execution in app.executions
+        if execution.project_id == project_id
+    ])
 
 
 @bp.get("/<int:app_id>/releases")
-def list_releases(app_id):
+def list_releases(project_id, app_id):
     releases = ReleaseService().list_releases(
-        get_application(app_id), request.args.get("environment")
+        get_application(project_id, app_id), request.args.get("environment")
     )
     return success([release.to_dict() for release in releases])
 
 
 @bp.post("/<int:app_id>/rollback")
-def rollback_application(app_id):
+def rollback_application(project_id, app_id):
     payload = json_object(request.get_json(silent=True), required=True)
     release_id = require_positive_int(payload, "release_id")
     environment_name = require_string(payload, "environment") if "environment" in payload else "dev"
     result, release = ReleaseService().rollback(
-        get_application(app_id),
+        get_application(project_id, app_id),
         release_id,
         environment_name,
         g.current_user.username,
@@ -128,8 +136,8 @@ def rollback_application(app_id):
 
 
 @bp.get("/<int:app_id>/status")
-def application_status(app_id):
-    app = get_application(app_id)
+def application_status(project_id, app_id):
+    app = get_application(project_id, app_id)
     environment = request.args.get("environment", "dev")
     environment_config = ApplicationEnvironment.query.filter_by(
         application_id=app.id, environment_name=environment
@@ -145,8 +153,8 @@ def application_status(app_id):
 
 
 @bp.get("/<int:app_id>/runtime/pods/<pod_name>/logs")
-def pod_logs(app_id, pod_name):
-    app = get_application(app_id)
+def pod_logs(project_id, app_id, pod_name):
+    app = get_application(project_id, app_id)
     environment = request.args.get("environment", "dev")
     env = ApplicationEnvironment.query.filter_by(
         application_id=app.id, environment_name=environment
@@ -159,8 +167,8 @@ def pod_logs(app_id, pod_name):
 
 
 @bp.get("/<int:app_id>/runtime/pods/<pod_name>/yaml")
-def pod_yaml(app_id, pod_name):
-    app = get_application(app_id)
+def pod_yaml(project_id, app_id, pod_name):
+    app = get_application(project_id, app_id)
     environment = request.args.get("environment", "dev")
     env = ApplicationEnvironment.query.filter_by(
         application_id=app.id, environment_name=environment

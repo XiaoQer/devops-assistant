@@ -46,7 +46,7 @@ class ApplicationServiceTest(unittest.TestCase):
             "port": 3000,
         }
 
-        app = ApplicationService().create({
+        app = ApplicationService().create(self.project, {
             "name": "frontend-console",
             "repo_url": "https://github.com/example/frontend-console.git",
         })
@@ -79,7 +79,7 @@ class ApplicationServiceTest(unittest.TestCase):
         db.session.commit()
 
         with self.assertRaises(ApiError) as context:
-            ApplicationService().create({
+            ApplicationService().create(self.project, {
                 "name": "payment-service",
                 "repo_url": "https://github.com/example/another-payment-service.git",
             })

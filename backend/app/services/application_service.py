@@ -10,7 +10,6 @@ from .configuration_service import ConfigurationService
 from .kubernetes_service import KubernetesService
 from .environment_service import EnvironmentService
 from .registry_service import RegistryService
-from .project_service import ProjectService
 
 
 class ApplicationService:
@@ -20,16 +19,22 @@ class ApplicationService:
         ("dockerfile", "dockerfile"): "dockerfile-kaniko-deploy",
     }
 
-    def create(self, payload):
+    def get(self, project_id, application_id):
+        app = Application.query.filter_by(
+            id=application_id,
+            project_id=project_id,
+        ).first()
+        if not app:
+            raise ApiError("应用不存在", 404, "APPLICATION_NOT_FOUND")
+        return app
+
+    def create(self, project, payload):
         required = ("name", "repo_url")
         missing = [key for key in required if not payload.get(key)]
         if missing:
             raise ApiError(f"缺少必填字段: {', '.join(missing)}")
-        project_id = payload.get("project_id")
-        if not project_id:
-            project_id = ProjectService().ensure_default_project().id
         existing = Application.query.filter_by(
-            project_id=project_id,
+            project_id=project.id,
             name=payload["name"],
         ).first()
         if existing:
@@ -37,13 +42,13 @@ class ApplicationService:
         analysis = RepoAnalyzerService().analyze(
             payload["repo_url"], payload.get("branch", "main")
         )
-        registry = RegistryService().get_default(project_id)
+        registry = RegistryService().get_default(project.id)
         image_name = payload.get("image_name") or (
             f"{registry.image_prefix}/{payload['name']}"
             if registry else f"{current_app.config['DEFAULT_IMAGE_REGISTRY']}/{payload['name']}"
         )
         app = Application(
-            project_id=project_id,
+            project_id=project.id,
             name=payload["name"],
             repo_url=payload["repo_url"],
             branch=payload.get("branch", "main"),

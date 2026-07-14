@@ -1,26 +1,36 @@
 from flask import Blueprint, g, request
 
-from app.models import ApprovalRecord, Application
+from app.models import ApprovalRecord
+from app.services.application_service import ApplicationService
 from app.services.approval_service import ApprovalService
+from app.services.project_service import ProjectService
 from app.utils.errors import ApiError
 from app.utils.response import success
 from app.utils.validation import json_object, require_positive_int, require_string
 
-bp = Blueprint("approvals", __name__, url_prefix="/api/approvals")
+bp = Blueprint(
+    "approvals",
+    __name__,
+    url_prefix="/api/projects/<int:project_id>/approvals",
+)
 
 
-def get_approval(approval_id):
-    item = ApprovalRecord.query.get(approval_id)
+def get_approval(project_id, approval_id):
+    item = ApprovalRecord.query.filter_by(
+        id=approval_id,
+        project_id=project_id,
+    ).first()
     if not item:
         raise ApiError("审批记录不存在", 404, "APPROVAL_NOT_FOUND")
     return item
 
 
 @bp.get("")
-def list_approvals():
+def list_approvals(project_id):
+    ProjectService().get(project_id)
     page = max(request.args.get("page", 1, type=int), 1)
     page_size = min(max(request.args.get("pageSize", 20, type=int), 1), 100)
-    query = ApprovalRecord.query
+    query = ApprovalRecord.query.filter_by(project_id=project_id)
     if request.args.get("status"):
         query = query.filter_by(status=request.args["status"])
     if request.args.get("environment"):
@@ -37,23 +47,27 @@ def list_approvals():
 
 
 @bp.post("")
-def submit_approval():
+def submit_approval(project_id):
+    ProjectService().get(project_id)
     payload = json_object(request.get_json(silent=True), required=True)
     application_id = require_positive_int(payload, "application_id")
-    app = Application.query.get(application_id)
-    if not app:
-        raise ApiError("应用不存在", 404, "APPLICATION_NOT_FOUND")
+    app = ApplicationService().get(project_id, application_id)
     item = ApprovalService().submit(
         app, payload, g.current_user.username
     )
     return success(item.to_dict(), "发布审批已提交", 201)
 
 
+@bp.get("/<int:approval_id>")
+def approval_detail(project_id, approval_id):
+    return success(get_approval(project_id, approval_id).to_dict())
+
+
 @bp.post("/<int:approval_id>/approve")
-def approve(approval_id):
+def approve(project_id, approval_id):
     payload = json_object(request.get_json(silent=True))
     item = ApprovalService().approve(
-        get_approval(approval_id),
+        get_approval(project_id, approval_id),
         g.current_user.username,
         payload.get("comment"),
     )
@@ -61,11 +75,11 @@ def approve(approval_id):
 
 
 @bp.post("/<int:approval_id>/reject")
-def reject(approval_id):
+def reject(project_id, approval_id):
     payload = json_object(request.get_json(silent=True), required=True)
     comment = require_string(payload, "comment")
     item = ApprovalService().reject(
-        get_approval(approval_id),
+        get_approval(project_id, approval_id),
         g.current_user.username,
         comment,
     )

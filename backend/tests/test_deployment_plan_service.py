@@ -212,7 +212,7 @@ class DeploymentPlanServiceTest(unittest.TestCase):
 
         response = csrf_post(
             self.client,
-            f"/api/applications/{app.id}/deploy",
+            f"/api/projects/{app.project_id}/applications/{app.id}/deploy",
             self.csrf_token,
             json={"environment": "dev"},
         )
@@ -235,7 +235,7 @@ class DeploymentPlanServiceTest(unittest.TestCase):
 
         response = csrf_post(
             self.client,
-            f"/api/applications/{app.id}/deploy/plan",
+            f"/api/projects/{app.project_id}/applications/{app.id}/deploy/plan",
             self.csrf_token,
             json={"environment": "dev"},
         )

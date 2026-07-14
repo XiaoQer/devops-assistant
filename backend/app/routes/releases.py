@@ -3,16 +3,22 @@ from flask import Blueprint, request
 from app.models import ReleaseRecord
 from app.utils.response import success
 from app.services.release_service import ReleaseService
+from app.services.project_service import ProjectService
 
-bp = Blueprint("release_center", __name__, url_prefix="/api/releases")
+bp = Blueprint(
+    "release_center",
+    __name__,
+    url_prefix="/api/projects/<int:project_id>/releases",
+)
 
 
 @bp.get("")
-def release_center():
+def release_center(project_id):
+    ProjectService().get(project_id)
     ReleaseService().sync_all()
     page = max(request.args.get("page", 1, type=int), 1)
     page_size = min(max(request.args.get("pageSize", 20, type=int), 1), 100)
-    query = ReleaseRecord.query
+    query = ReleaseRecord.query.filter_by(project_id=project_id)
     if request.args.get("environment"):
         query = query.filter_by(environment=request.args["environment"])
     if request.args.get("status"):

@@ -531,7 +531,9 @@ class ProjectRoutesTest(unittest.TestCase):
         ])
         db.session.commit()
 
-        response = self.client.get("/api/applications", query_string={"projectId": self.project_id})
+        response = self.client.get(
+            f"/api/projects/{self.project_id}/applications"
+        )
 
         self.assertEqual(response.status_code, 200)
         items = response.get_json()["data"]

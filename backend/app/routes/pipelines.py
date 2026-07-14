@@ -1,44 +1,62 @@
 from flask import Blueprint, current_app, request
 
+from app.models import PipelineExecution
+from app.services.project_service import ProjectService
 from app.services.tekton_service import TektonService
 from app.utils.errors import ApiError
 from app.utils.response import success
 
-bp = Blueprint("pipelines", __name__, url_prefix="/api/pipelines")
+bp = Blueprint(
+    "pipelines",
+    __name__,
+    url_prefix="/api/projects/<int:project_id>/pipelines",
+)
 
 
 def namespace():
     return request.args.get("namespace", current_app.config["TEKTON_NAMESPACE"])
 
 
+def get_execution(project_id, pipeline_run_name):
+    execution = PipelineExecution.query.filter_by(
+        project_id=project_id,
+        pipeline_run_name=pipeline_run_name,
+    ).first()
+    if not execution:
+        raise ApiError(
+            "PipelineExecution 不存在",
+            404,
+            "PIPELINE_EXECUTION_NOT_FOUND",
+        )
+    return execution
+
+
 @bp.get("")
-def list_pipelines():
+def list_pipelines(project_id):
+    ProjectService().get(project_id)
     page = max(request.args.get("page", 1, type=int), 1)
     page_size = min(max(request.args.get("pageSize", 20, type=int), 1), 100)
-    items = TektonService().list_pipeline_runs(namespace())
+    query = PipelineExecution.query.filter_by(project_id=project_id)
     status = request.args.get("status")
-    query = request.args.get("query", "").lower()
     if status:
-        items = [item for item in items if item["status"] == status]
-    if query:
-        items = [
-            item for item in items
-            if query in " ".join(str(item.get(key) or "") for key in (
-                "name", "application", "pipeline", "repo_url"
-            )).lower()
-        ]
-    total = len(items)
-    start = (page - 1) * page_size
+        query = query.filter_by(status=status)
+    search = request.args.get("query", "").strip()
+    if search:
+        query = query.filter(PipelineExecution.pipeline_run_name.ilike(f"%{search}%"))
+    pagination = query.order_by(PipelineExecution.created_at.desc()).paginate(
+        page=page, per_page=page_size, error_out=False
+    )
     return success({
-        "items": items[start:start + page_size],
+        "items": [item.to_dict() for item in pagination.items],
         "page": page,
         "pageSize": page_size,
-        "total": total,
+        "total": pagination.total,
     })
 
 
 @bp.get("/<pipeline_run_name>/status")
-def pipeline_status(pipeline_run_name):
+def pipeline_status(project_id, pipeline_run_name):
+    get_execution(project_id, pipeline_run_name)
     service = TektonService()
     data = service.get_pipeline_run_status(pipeline_run_name, namespace())
     data["task_runs"] = service.list_task_runs(pipeline_run_name, namespace())
@@ -46,7 +64,8 @@ def pipeline_status(pipeline_run_name):
 
 
 @bp.get("/<pipeline_run_name>/logs")
-def pipeline_logs(pipeline_run_name):
+def pipeline_logs(project_id, pipeline_run_name):
+    get_execution(project_id, pipeline_run_name)
     service = TektonService()
     data = service.get_pipeline_run_log_details(pipeline_run_name, namespace())
     data["logs"] = service.get_pipeline_run_logs(pipeline_run_name, namespace())
@@ -54,10 +73,10 @@ def pipeline_logs(pipeline_run_name):
 
 
 @bp.post("/<pipeline_run_name>/retry")
-def retry_pipeline(pipeline_run_name):
+def retry_pipeline(project_id, pipeline_run_name):
+    get_execution(project_id, pipeline_run_name)
     try:
         data = TektonService().retry_pipeline_run(pipeline_run_name, namespace())
     except ValueError as exc:
         raise ApiError(str(exc), 409, "PIPELINE_RETRY_NOT_ALLOWED") from exc
     return success(data, "PipelineRun 重试已提交", 201)
-

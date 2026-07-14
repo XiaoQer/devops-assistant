@@ -317,7 +317,7 @@ class AuthRoutesTest(unittest.TestCase):
 
         response = csrf_post(
             self.client,
-            f"/api/applications/{app.id}/configs",
+            f"/api/projects/{app.project_id}/applications/{app.id}/configs",
             auth["csrf_token"],
             json={
                 "environment_id": environment.id,
@@ -332,7 +332,7 @@ class AuthRoutesTest(unittest.TestCase):
         self.assertEqual(created.changed_by, "admin")
 
         update_response = self.client.patch(
-            f"/api/configs/{created.id}",
+            f"/api/projects/{app.project_id}/applications/{app.id}/configs/{created.id}",
             json={"value": "debug"},
             headers={
                 "X-CSRF-Token": auth["csrf_token"],
@@ -360,7 +360,7 @@ class AuthRoutesTest(unittest.TestCase):
 
         response = csrf_post(
             self.client,
-            f"/api/applications/{app.id}/deploy",
+            f"/api/projects/{app.project_id}/applications/{app.id}/deploy",
             auth["csrf_token"],
             json={"environment": "dev"},
             headers={"X-User": "attacker"},
@@ -392,14 +392,14 @@ class AuthRoutesTest(unittest.TestCase):
 
         deploy_response = csrf_post(
             self.client,
-            f"/api/applications/{app.id}/deploy",
+            f"/api/projects/{app.project_id}/applications/{app.id}/deploy",
             auth["csrf_token"],
             json={"environment": "dev"},
             headers=headers,
         )
         rollback_response = csrf_post(
             self.client,
-            f"/api/applications/{app.id}/rollback",
+            f"/api/projects/{app.project_id}/applications/{app.id}/rollback",
             auth["csrf_token"],
             json={"environment": "dev", "release_id": source_release.id},
             headers=headers,
@@ -427,21 +427,21 @@ class AuthRoutesTest(unittest.TestCase):
 
         submit_response = csrf_post(
             self.client,
-            "/api/approvals",
+            f"/api/projects/{app.project_id}/approvals",
             auth["csrf_token"],
             json={"application_id": app.id, "environment": "dev"},
             headers=headers,
         )
         approve_response = csrf_post(
             self.client,
-            f"/api/approvals/{approval.id}/approve",
+            f"/api/projects/{app.project_id}/approvals/{approval.id}/approve",
             auth["csrf_token"],
             json={"comment": "approved"},
             headers=headers,
         )
         reject_response = csrf_post(
             self.client,
-            f"/api/approvals/{approval.id}/reject",
+            f"/api/projects/{app.project_id}/approvals/{approval.id}/reject",
             auth["csrf_token"],
             json={"comment": "rejected"},
             headers=headers,

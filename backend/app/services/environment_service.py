@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 from app.extensions import db
-from app.models import ApplicationEnvironment, KubernetesCluster
+from app.models import Application, ApplicationEnvironment, KubernetesCluster
 from app.utils.errors import ApiError
 
 
@@ -15,7 +15,7 @@ class EnvironmentService:
         "max_surge", "approval_required",
     }
 
-    def list(self, app, ensure_defaults=True):
+    def list(self, app, ensure_defaults=False):
         if ensure_defaults and not app.environments:
             self._create_defaults(app)
         return ApplicationEnvironment.query.filter_by(
@@ -26,6 +26,12 @@ class EnvironmentService:
         name = payload.get("environment_name", "").strip().lower()
         if not name:
             raise ApiError("environment_name 为必填字段")
+        if not payload.get("kubernetes_cluster_id"):
+            raise ApiError(
+                "请选择 Kubernetes 集群",
+                400,
+                "KUBERNETES_CLUSTER_REQUIRED",
+            )
         if ApplicationEnvironment.query.filter_by(
             application_id=app.id, environment_name=name
         ).first():
@@ -110,7 +116,8 @@ class EnvironmentService:
                 environment.kube_context = None
             else:
                 cluster = KubernetesCluster.query.get(int(cluster_id))
-                project_id = environment.application.project_id if environment.application else None
+                application = environment.application or db.session.get(Application, environment.application_id)
+                project_id = application.project_id if application else None
                 if not cluster or cluster.project_id != project_id:
                     raise ApiError("Kubernetes 集群不存在", 404, "CLUSTER_NOT_FOUND")
                 environment.kubernetes_cluster_id = cluster.id

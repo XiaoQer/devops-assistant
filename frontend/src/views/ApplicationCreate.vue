@@ -1,33 +1,29 @@
 <template>
   <div class="page-content page-stack">
+    <DetailBreadcrumb :items="[
+      { label: 'DevCenter', to: '/devcenter' },
+      { label: 'Applications', to: applicationsPath },
+      { label: '创建应用', current: true },
+    ]" />
     <PageHeader
-      eyebrow="Create workspace"
-      title="Create application"
-      description="先描述你想交付什么，再让平台自动识别技术栈、生成应用工作区与交付基础配置。"
-    />
+      eyebrow="Application setup"
+      title="创建应用"
+      description="连接代码仓库，平台会识别技术栈并初始化应用交付工作区。"
+    >
+      <el-button @click="goBack">返回 Applications</el-button>
+    </PageHeader>
 
     <div class="create-grid">
-      <section class="surface hero-card glass-card">
-        <span class="soft-pill">AI assisted setup</span>
-        <h2>Describe the software you want to ship</h2>
-        <p>把创建流程从“填很多表”变成“表达意图 + 连接代码仓库”。平台会自动推断运行时、构建方式与默认部署配置。</p>
-        <div class="intent-box">
-          <textarea v-model="intent" placeholder="Create a Java 21 Spring Boot service for order management"></textarea>
-          <div class="intent-suggestions">
-            <button v-for="item in suggestions" :key="item.label" @click="applySuggestion(item)">{{ item.label }}</button>
-          </div>
-        </div>
-      </section>
-
-      <section class="surface form-card">
+      <section class="surface form-card create-form-card">
         <div class="surface-header">
           <div>
-            <h3>Repository connection</h3>
-            <p>保留少量必需信息，其余交给平台自动识别。</p>
+            <h3>应用与仓库</h3>
+            <p>填写应用标识和代码仓库，创建后可继续完善环境与发布配置。</p>
           </div>
         </div>
         <div class="form-body">
           <el-form label-position="top" :model="form">
+            <div class="form-section-title">应用信息</div>
             <el-form-item label="所属 Project">
               <el-select v-model="form.project_id" placeholder="选择项目">
                 <el-option v-for="project in projects" :key="project.id" :label="project.name" :value="project.id" />
@@ -36,6 +32,8 @@
             <el-form-item label="应用名称">
               <el-input v-model="form.name" placeholder="order-api" />
             </el-form-item>
+
+            <div class="form-section-title repository-title">代码仓库</div>
             <el-form-item label="GitHub 仓库地址">
               <el-input v-model="form.repo_url" placeholder="https://github.com/org/repo.git" />
             </el-form-item>
@@ -48,24 +46,47 @@
               </el-form-item>
             </div>
             <div class="callout">
-              <strong>平台默认行为</strong>
-              <p>自动克隆仓库、识别语言与框架、生成 Application Spec，并为后续交付设置合理默认值。</p>
+              <strong>创建后自动执行</strong>
+              <p>平台会克隆仓库、识别语言与框架，并生成应用的基础交付配置。</p>
             </div>
-            <el-button class="submit" type="primary" :loading="loading" @click="submit">分析并创建应用</el-button>
+            <el-button class="submit" type="primary" :loading="loading" @click="submit">分析仓库并创建应用</el-button>
           </el-form>
         </div>
       </section>
+
+      <aside class="create-aside">
+        <section class="surface context-card">
+          <div class="aside-label">PROJECT CONTEXT</div>
+          <h3>{{ selectedProject?.name || '选择一个 Project' }}</h3>
+          <p v-if="selectedProject?.description">{{ selectedProject.description }}</p>
+          <p v-else>应用会继承当前 Project 的交付边界和默认配置。</p>
+          <dl>
+            <div><dt>目标环境</dt><dd>{{ selectedProject?.environments?.length || 0 }}</dd></div>
+            <div><dt>Kubernetes 集群</dt><dd>{{ selectedProject?.clusters?.length || 0 }}</dd></div>
+            <div><dt>镜像仓库</dt><dd>{{ selectedProject?.registries?.length || 0 }}</dd></div>
+          </dl>
+        </section>
+
+        <section class="surface checklist-card">
+          <div class="aside-label">创建后将完成</div>
+          <ul>
+            <li><span>01</span><div><strong>分析代码仓库</strong><small>识别语言、框架与构建方式</small></div></li>
+            <li><span>02</span><div><strong>初始化应用规格</strong><small>生成基础端口和镜像配置</small></div></li>
+            <li><span>03</span><div><strong>进入发布工作区</strong><small>继续配置环境并执行交付</small></div></li>
+          </ul>
+        </section>
+      </aside>
     </div>
 
-    <section class="surface result-card">
+    <section v-if="result" class="surface result-card">
       <div class="surface-header">
         <div>
-          <h3>Recognition result</h3>
-          <p>创建成功后，这里会展示平台自动识别出的运行时与交付规格。</p>
+          <h3>应用初始化结果</h3>
+          <p>创建成功后，这里会展示平台识别出的运行时与基础交付规格。</p>
         </div>
         <el-button v-if="result" type="primary" @click="router.push(`/devcenter/projects/${form.project_id}/applications/${result.id}`)">进入应用工作区</el-button>
       </div>
-      <div v-if="result" class="result-content">
+      <div class="result-content">
         <div class="result-overview">
           <span class="soft-pill">{{ result.language }}</span>
           <span class="soft-pill">{{ result.framework }}</span>
@@ -74,7 +95,6 @@
         </div>
         <pre class="code-block">{{ yaml }}</pre>
       </div>
-      <EmptyState v-else title="等待仓库分析结果" description="提交仓库后，平台会在这里生成软件工作区摘要与 Application Spec。" />
     </section>
   </div>
 </template>
@@ -88,40 +108,17 @@ import { applicationApi } from '../api/application'
 import { projectApi } from '../api/project'
 import type { Application, Project } from '../types'
 import PageHeader from '../components/common/PageHeader.vue'
-import EmptyState from '../components/common/EmptyState.vue'
 
 const router = useRouter()
 const route = useRoute()
 const form = reactive({ project_id: 0, name: '', repo_url: '', branch: 'main', namespace: 'default' })
 const loading = ref(false)
 const result = ref<Application>()
-const intent = ref('')
 const projects = ref<Project[]>([])
-
-const suggestions = [
-  {
-    label: 'Spring Boot service',
-    intent: 'Create a Java 21 Spring Boot service for order management',
-    name: 'order-service',
-  },
-  {
-    label: 'Node.js API',
-    intent: 'Create a Node.js API for payment orchestration',
-    name: 'payment-api',
-  },
-  {
-    label: 'Frontend app',
-    intent: 'Create a Vue frontend for internal operations',
-    name: 'ops-web',
-  },
-]
+const selectedProject = computed(() => projects.value.find(project => project.id === form.project_id))
+const applicationsPath = computed(() => form.project_id ? `/devcenter/projects/${form.project_id}/applications` : '/devcenter')
 
 const yaml = computed(() => result.value ? yamlLib.dump(result.value.application_spec) : '')
-
-function applySuggestion(item: { label: string; intent: string; name: string }) {
-  intent.value = item.intent
-  if (!form.name) form.name = item.name
-}
 
 async function submit() {
   if (!form.project_id) return ElMessage.warning('请先选择所属项目')
@@ -142,6 +139,14 @@ async function submit() {
   }
 }
 
+function goBack() {
+  if (form.project_id) {
+    router.push(`/devcenter/projects/${form.project_id}/applications`)
+  } else {
+    router.push('/devcenter')
+  }
+}
+
 onMounted(async () => {
   projects.value = await projectApi.list()
   const selected = Number(route.query.projectId || 0)
@@ -156,70 +161,120 @@ onMounted(async () => {
 <style scoped>
 .create-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.95fr);
+  grid-template-columns: minmax(0, 1fr) 286px;
+  align-items: start;
   gap: 16px;
+  max-width: 1120px;
 }
 
-.hero-card,
 .form-card,
 .result-card {
   box-shadow: none;
 }
 
-.hero-card {
-  padding: 24px;
+.create-form-card {
+  min-width: 0;
 }
 
-.hero-card h2 {
-  margin: 16px 0 10px;
-  font-size: 34px;
-  line-height: 1.08;
-  letter-spacing: -0.05em;
+.create-aside {
+  display: grid;
+  gap: 16px;
 }
 
-.hero-card p {
+.context-card,
+.checklist-card {
+  padding: 20px;
+}
+
+.aside-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.context-card h3 {
+  margin: 12px 0 8px;
+  font-size: 20px;
+}
+
+.context-card p {
   margin: 0;
   color: var(--muted);
-  font-size: 15px;
-  line-height: 1.8;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
-.intent-box {
-  margin-top: 24px;
+.context-card dl {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
 }
 
-.intent-box textarea {
-  width: 100%;
-  min-height: 180px;
-  padding: 16px 18px;
-  border-radius: 16px;
-  border: 1px solid var(--border-soft);
-  background: var(--theme-panel);
-  color: var(--text);
-  resize: vertical;
-  outline: none;
-  font: inherit;
-  line-height: 1.7;
-}
-
-.intent-suggestions {
+.context-card dl div {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 12px;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.intent-suggestions button {
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid var(--border-soft);
-  background: var(--surface-soft);
-  cursor: pointer;
+.context-card dt,
+.context-card dd {
+  margin: 0;
+  font-size: 13px;
 }
+
+.context-card dt { color: var(--muted); }
+.context-card dd { color: var(--text); font-weight: 700; }
+
+.checklist-card ul {
+  display: grid;
+  gap: 18px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checklist-card li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.checklist-card li > span {
+  display: grid;
+  flex: 0 0 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.checklist-card strong,
+.checklist-card small {
+  display: block;
+}
+
+.checklist-card strong { font-size: 13px; }
+.checklist-card small { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 
 .form-body {
   padding: 8px 24px 24px;
+}
+
+.form-section-title {
+  margin: 8px 0 16px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.repository-title {
+  margin-top: 24px;
 }
 
 .inline-grid {
@@ -264,13 +319,22 @@ onMounted(async () => {
 }
 
 @media (max-width: 1100px) {
-  .create-grid,
-  .inline-grid {
+  .create-grid {
     grid-template-columns: 1fr;
   }
 
-  .hero-card h2 {
-    font-size: 30px;
+  .create-aside {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inline-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .create-aside {
+    grid-template-columns: 1fr;
   }
 }
 </style>

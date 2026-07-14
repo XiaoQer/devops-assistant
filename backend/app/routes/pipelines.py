@@ -1,6 +1,8 @@
 from flask import Blueprint, current_app, request
 
-from app.models import Application, ApplicationBuildVersion, PipelineExecution
+from app.extensions import db
+from app.models import Application, ApplicationBuildVersion, ApplicationReleaseBatch, ApplicationReleaseTarget, PipelineExecution
+from app.services.delivery_reconciler import DeliveryReconciler
 from app.services.project_service import ProjectService
 from app.services.tekton_service import TektonService
 from app.utils.errors import ApiError
@@ -80,6 +82,42 @@ def pipeline_status(project_id, pipeline_run_name):
     data = service.get_pipeline_run_status(pipeline_run_name, namespace())
     data["task_runs"] = service.list_task_runs(pipeline_run_name, namespace())
     return success(data)
+
+
+@bp.get("/<pipeline_run_name>/flow")
+def pipeline_flow(project_id, pipeline_run_name):
+    """Return the CI build and its associated multi-environment CD targets."""
+    execution = get_execution(project_id, pipeline_run_name)
+    build = execution if isinstance(execution, ApplicationBuildVersion) else None
+    if build is None and getattr(execution, "build_version_id", None):
+        build = ApplicationBuildVersion.query.get(execution.build_version_id)
+    batch = ApplicationReleaseBatch.query.filter_by(
+        project_id=project_id,
+        build_version_id=build.id if build else None,
+    ).first() if build else None
+    if batch is None:
+        target = ApplicationReleaseTarget.query.filter_by(
+            pipeline_run_name=pipeline_run_name,
+        ).first()
+        batch = target.batch if target and target.batch.project_id == project_id else None
+        if batch and not build:
+            build = batch.build_version
+    if batch:
+        # Pipeline detail is also a reconciliation entry point. Without this,
+        # a completed build can remain Pending until another application API is
+        # opened, leaving all Deploy-only targets without a PipelineRun/logs.
+        DeliveryReconciler().reconcile_batch(batch.id)
+        batch = db.session.get(ApplicationReleaseBatch, batch.id)
+        if batch and not build:
+            build = batch.build_version
+    build_data = build.to_dict() if build else None
+    if build_data and build.application:
+        build_data["build_type"] = build.application.build_type
+    return success({
+        "current_run": pipeline_run_name,
+        "build": build_data,
+        "batch": batch.to_dict() if batch else None,
+    })
 
 
 @bp.get("/<pipeline_run_name>/logs")

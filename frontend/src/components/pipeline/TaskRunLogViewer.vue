@@ -1,12 +1,11 @@
 <template>
-  <section class="surface viewer">
+  <section class="surface viewer" :class="{ empty: !selectedStep?.logs }">
     <header>
       <div>
         <small>LOG OUTPUT</small>
         <b>{{ task?.task_name || '选择一个 Task' }}</b>
       </div>
       <div class="viewer-actions">
-        <el-button size="small" @click="$emit('analyze')" :disabled="task?.status !== 'Failed'">✦ AI 分析</el-button>
         <el-button size="small" @click="$emit('retry')" :disabled="task?.status !== 'Failed'">重试执行</el-button>
         <el-button size="small" @click="copy" :disabled="!selectedStep">复制日志</el-button>
       </div>
@@ -16,7 +15,12 @@
         {{ step.step }}
       </button>
     </nav>
-    <pre class="code-block log-output">{{ selectedStep?.logs || '等待日志输出…' }}</pre>
+    <div v-if="!selectedStep?.logs" class="log-empty-state">
+      <span class="log-empty-icon">⌁</span>
+      <strong>等待日志输出</strong>
+      <span>任务开始执行后，运行日志会显示在这里</span>
+    </div>
+    <pre v-else class="code-block log-output">{{ selectedStep.logs }}</pre>
   </section>
 </template>
 
@@ -25,7 +29,7 @@ import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps<{ task?: any }>()
-defineEmits<{ analyze: []; retry: [] }>()
+defineEmits<{ retry: [] }>()
 
 const selectedStep = ref<any>()
 
@@ -108,4 +112,44 @@ nav button.active {
   border-radius: 0;
   border: 0;
 }
+
+.log-empty-state {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--muted);
+  background: var(--surface-soft);
+  text-align: center;
+}
+
+.log-empty-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+  border: 1px solid rgba(37, 99, 235, .18);
+  border-radius: 12px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 25px;
+  line-height: 1;
+}
+
+.log-empty-state strong {
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.log-empty-state > span:last-child {
+  font-size: 12px;
+}
+
+.viewer.empty .log-empty-state {
+  min-height: 150px;
+}
+
 </style>

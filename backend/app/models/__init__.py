@@ -11,10 +11,13 @@ from .container_registry import ContainerRegistry
 from .user import User
 from .user_session import UserSession
 from .build_version import ApplicationBuildVersion
+from .application_release_batch import ApplicationReleaseBatch
+from .application_release_target import ApplicationReleaseTarget
 
 __all__ = [
     "Application", "PipelineExecution", "Project", "ProjectMember",
     "KubernetesCluster", "ReleaseRecord",
     "ApplicationEnvironment", "ApplicationConfig", "ApprovalRecord",
     "ContainerRegistry", "User", "UserSession", "ApplicationBuildVersion",
+    "ApplicationReleaseBatch", "ApplicationReleaseTarget",
 ]

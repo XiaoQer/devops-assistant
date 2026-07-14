@@ -7,18 +7,19 @@ spec:
   params:
     - {name: repo_url, type: string}
     - {name: branch, type: string}
+    - {name: commit, type: string}
     - {name: image, type: string}
   workspaces: [{name: source}]
   tasks:
     - name: clone
       taskSpec:
-        params: [{name: repo_url}, {name: branch}]
+        params: [{name: repo_url}, {name: branch}, {name: commit}]
         workspaces: [{name: source}]
         steps:
           - name: git-clone
             image: alpine/git:2.45.2
-            script: rm -rf $(workspaces.source.path)/* && git clone --depth=1 --branch "$(params.branch)" "$(params.repo_url)" $(workspaces.source.path)
-      params: [{name: repo_url, value: $(params.repo_url)}, {name: branch, value: $(params.branch)}]
+            script: rm -rf $(workspaces.source.path)/* && git clone --depth=20 --branch "$(params.branch)" "$(params.repo_url)" $(workspaces.source.path) && git -C $(workspaces.source.path) checkout "$(params.commit)"
+      params: [{name: repo_url, value: $(params.repo_url)}, {name: branch, value: $(params.branch)}, {name: commit, value: $(params.commit)}]
       workspaces: [{name: source, workspace: source}]
     - name: package
       runAfter: [clone]

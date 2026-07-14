@@ -7,7 +7,6 @@ from app.models import Project
 from app.utils.errors import ApiError
 from .application_service import ApplicationService
 from .delivery_context_service import DeliveryContextService
-from .environment_service import EnvironmentService
 from .build_version_service import BuildVersionService
 
 
@@ -21,11 +20,6 @@ class DeploymentPlanService:
         environment = ApplicationEnvironment.query.filter_by(
             application_id=app.id, environment_name=environment_name
         ).first()
-        if not environment:
-            EnvironmentService().list(app, ensure_defaults=True)
-            environment = ApplicationEnvironment.query.filter_by(
-                application_id=app.id, environment_name=environment_name
-            ).first()
 
         pipeline_map = ApplicationService.DEPLOY_PIPELINES if build_version else ApplicationService.PIPELINES
         pipeline_name = pipeline_map.get((app.language, app.build_type))

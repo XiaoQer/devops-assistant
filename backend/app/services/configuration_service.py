@@ -12,6 +12,11 @@ from .registry_service import RegistryService
 
 class ConfigurationService:
     TYPES = {"env", "configmap", "secret", "registry_secret", "resource", "ingress"}
+    RESOURCE_KEYS = {
+        "replicas", "cpu_request", "cpu_limit", "memory_request", "memory_limit",
+        "storage_size", "deploy_strategy", "max_unavailable", "max_surge",
+    }
+    INGRESS_KEYS = {"host", "path", "service_port"}
 
     def list(self, app_id, environment_id, config_type=None):
         query = ApplicationConfig.query.filter_by(
@@ -28,6 +33,10 @@ class ConfigurationService:
         key = payload.get("config_key", "").strip()
         if not key:
             raise ApiError("config_key 为必填字段")
+        if config_type == "resource" and key not in self.RESOURCE_KEYS:
+            raise ApiError("不支持的资源参数")
+        if config_type == "ingress" and key not in self.INGRESS_KEYS:
+            raise ApiError("不支持的 Ingress 参数")
         existing = ApplicationConfig.query.filter_by(
             application_id=app_id,
             environment_id=environment_id,
@@ -36,7 +45,11 @@ class ConfigurationService:
             is_active=True,
         ).first()
         if existing:
-            return self.update(existing, payload, user)
+            raise ApiError(
+                f"配置 {key} 已存在，请直接编辑已有配置",
+                409,
+                "CONFIG_EXISTS",
+            )
         item = ApplicationConfig(
             application_id=app_id,
             environment_id=environment_id,
@@ -53,13 +66,30 @@ class ConfigurationService:
         return item
 
     def update(self, current, payload, user):
+        next_key = payload.get("config_key", current.config_key).strip()
+        if not next_key:
+            raise ApiError("config_key 为必填字段")
+        if next_key != current.config_key:
+            duplicate = ApplicationConfig.query.filter_by(
+                application_id=current.application_id,
+                environment_id=current.environment_id,
+                config_type=current.config_type,
+                config_key=next_key,
+                is_active=True,
+            ).filter(ApplicationConfig.id != current.id).first()
+            if duplicate:
+                raise ApiError(
+                    f"配置 {next_key} 已存在，请直接编辑已有配置",
+                    409,
+                    "CONFIG_EXISTS",
+                )
         current.is_active = False
         item = ApplicationConfig(
             config_group_id=current.config_group_id,
             application_id=current.application_id,
             environment_id=current.environment_id,
             config_type=current.config_type,
-            config_key=payload.get("config_key", current.config_key),
+            config_key=next_key,
             encrypted_value=(
                 self._encrypt(str(payload["value"]))
                 if "value" in payload else current.encrypted_value
@@ -107,17 +137,25 @@ class ConfigurationService:
             )
         kubernetes_service.ensure_namespace(environment.namespace)
         config_map_name = f"{app.name}-config"
+        env_config_map_name = f"{app.name}-env"
         secret_name = f"{app.name}-secret"
-        config_data = {
-            **grouped.get("env", {}),
-            **grouped.get("configmap", {}),
-        }
-        kubernetes_service.apply_config_map(
-            config_map_name, environment.namespace, config_data
-        )
+        kubernetes_service.apply_config_map(config_map_name, environment.namespace, grouped.get("configmap", {}))
+        kubernetes_service.apply_config_map(env_config_map_name, environment.namespace, grouped.get("env", {}))
         kubernetes_service.apply_secret(
             secret_name, environment.namespace, grouped.get("secret", {})
         )
+        resource_overrides = {
+            key: value
+            for key, value in grouped.get("resource", {}).items()
+            if key in self.RESOURCE_KEYS
+        }
+        ingress = grouped.get("ingress", {})
+        if ingress.get("host"):
+            resource_overrides["ingress_host"] = ingress["host"]
+        if ingress.get("path"):
+            resource_overrides["ingress_path"] = ingress["path"]
+        if ingress.get("service_port"):
+            resource_overrides["ingress_service_port"] = ingress["service_port"]
         registry_secret_name = None
         global_credentials = None
         if registry:
@@ -143,8 +181,10 @@ class ConfigurationService:
             )
         return {
             "config_map_name": config_map_name,
+            "env_config_map_name": env_config_map_name,
             "secret_name": secret_name,
             "registry_secret_name": registry_secret_name,
+            "resource_overrides": resource_overrides,
         }
 
     def materialize_build_registry(

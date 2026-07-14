@@ -7,6 +7,7 @@
       </div>
       <div class="section-actions">
         <el-button @click="openCompare" :disabled="environments.length < 2">环境对比</el-button>
+        <el-button type="primary" @click="openCreate">新建环境</el-button>
       </div>
     </div>
 
@@ -52,6 +53,7 @@
           <footer>
             <el-button @click="edit(env)">编辑</el-button>
             <el-button @click="clone(env)">克隆</el-button>
+            <el-button type="primary" plain @click="emit('configure', env.id)">配置变量</el-button>
             <el-dropdown trigger="click">
               <el-button>更多</el-button>
               <template #dropdown>
@@ -71,7 +73,7 @@
     <el-dialog
       v-model="dialog"
       :title="editing?.id ? '编辑环境' : '新建环境'"
-      width="720px"
+      width="620px"
       class="environment-dialog"
       custom-class="environment-dialog"
     >
@@ -130,6 +132,7 @@ import StatusBadge from '../common/StatusBadge.vue'
 import EmptyState from '../common/EmptyState.vue'
 
 const props = defineProps<{ applicationId: number; projectId: number }>()
+const emit = defineEmits<{ configure: [environmentId: number] }>()
 const environments = ref<ApplicationEnvironment[]>([])
 const clusters = ref<KubernetesCluster[]>([])
 const loading = ref(false)
@@ -190,6 +193,12 @@ function edit(env: ApplicationEnvironment) {
 }
 
 async function save() {
+  const name = form.environment_name.trim().toLowerCase()
+  if (!name) return ElMessage.warning('请输入环境标识')
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) return ElMessage.warning('环境标识仅支持小写字母、数字和连字符')
+  if (!form.kubernetes_cluster_id) return ElMessage.warning('请选择 Kubernetes 集群')
+  form.environment_name = name
+  if (!form.namespace.trim()) form.namespace = `${props.applicationId}-${name}`
   saving.value = true
   try {
     if (editing.value) await applicationApi.updateEnvironment(props.projectId, props.applicationId, editing.value.id, form)
@@ -197,6 +206,8 @@ async function save() {
     ElMessage.success('环境配置已保存')
     dialog.value = false
     await load()
+  } catch (error) {
+    ElMessage.error((error as Error).message || '环境保存失败')
   } finally {
     saving.value = false
   }
@@ -367,6 +378,7 @@ onMounted(load)
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 12px;
+  justify-content: flex-end;
 }
 
 .env-card :deep(.el-button) {
@@ -374,8 +386,14 @@ onMounted(load)
   padding: 6px 12px;
 }
 
+.env-card footer :deep(.el-button--primary.is-plain) {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
 .el-dialog :deep(.el-form-item) {
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .el-dialog :deep(.el-input__wrapper),
@@ -397,13 +415,13 @@ onMounted(load)
 
 :deep(.environment-dialog .el-dialog__header) {
   margin-right: 0;
-  padding: 20px 24px 14px;
+  padding: 16px 20px 12px;
   border-bottom: 1px solid #eef2f7;
 }
 
 :deep(.environment-dialog .el-dialog__title) {
   color: #0f172a !important;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
 }
 
@@ -417,17 +435,19 @@ onMounted(load)
 }
 
 :deep(.environment-dialog .el-dialog__body) {
-  padding: 20px 24px 8px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 16px 20px 4px;
   background: #ffffff !important;
 }
 
 :deep(.environment-dialog .el-dialog__footer) {
-  padding: 12px 24px 20px;
+  padding: 10px 20px 14px;
   border-top: 1px solid #eef2f7;
 }
 
 :deep(.environment-dialog .el-form-item__label) {
-  padding-bottom: 6px;
+  padding-bottom: 4px;
   color: #475569 !important;
   font-size: 13px;
   font-weight: 600;
@@ -436,7 +456,7 @@ onMounted(load)
 :deep(.environment-dialog .el-input__wrapper),
 :deep(.environment-dialog .el-select__wrapper),
 :deep(.environment-dialog .el-input-number) {
-  min-height: 40px;
+  min-height: 36px;
   border-radius: 9px;
   background: #f8fafc !important;
   box-shadow: 0 0 0 1px #dbe2ea inset !important;
@@ -468,7 +488,7 @@ onMounted(load)
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0 16px;
+  gap: 0 14px;
 }
 
 .form-grid .wide {

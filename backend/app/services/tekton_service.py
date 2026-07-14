@@ -76,6 +76,7 @@ class TektonService:
                     {"name": "max_surge", "value": deployment_config.get("max_surge", "25%")},
                     {"name": "ingress_host", "value": deployment_config.get("ingress_host", "")},
                     {"name": "config_map_name", "value": deployment_config.get("config_map_name", f"{app_name}-config")},
+                    {"name": "env_config_map_name", "value": deployment_config.get("env_config_map_name", f"{app_name}-env")},
                     {"name": "secret_name", "value": deployment_config.get("secret_name", f"{app_name}-secret")},
                     {"name": "registry_secret_name", "value": deployment_config.get("registry_secret_name", "")},
                     {"name": "kubeconfig_secret_name", "value": kubeconfig_secret_name},
@@ -90,7 +91,7 @@ class TektonService:
 
     def create_build_pipeline_run(
         self, pipeline_name, app_name, repo_url, branch, image_name, image_tag,
-        namespace, registry_secret_name="",
+        namespace, registry_secret_name="", commit="",
     ):
         body = {
             "apiVersion": "tekton.dev/v1",
@@ -116,6 +117,7 @@ class TektonService:
                 "params": [
                     {"name": "repo_url", "value": repo_url},
                     {"name": "branch", "value": branch},
+                    {"name": "commit", "value": commit},
                     {"name": "image", "value": f"{image_name}:{image_tag}"},
                 ],
             },
@@ -144,6 +146,7 @@ class TektonService:
             {"name": "max_surge", "value": deployment_config.get("max_surge", "25%")},
             {"name": "ingress_host", "value": deployment_config.get("ingress_host", "")},
             {"name": "config_map_name", "value": deployment_config.get("config_map_name", f"{app_name}-config")},
+            {"name": "env_config_map_name", "value": deployment_config.get("env_config_map_name", f"{app_name}-env")},
             {"name": "secret_name", "value": deployment_config.get("secret_name", f"{app_name}-secret")},
             {"name": "registry_secret_name", "value": deployment_config.get("registry_secret_name", "")},
             {"name": "kubeconfig_secret_name", "value": kubeconfig_secret_name},

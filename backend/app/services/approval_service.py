@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from app.extensions import db
-from app.models import ApprovalRecord, ApplicationEnvironment
+from app.models import ApprovalRecord, ApplicationEnvironment, ApplicationReleaseTarget
 from app.utils.errors import ApiError
 from .application_service import ApplicationService
 from .build_version_service import BuildVersionService
@@ -66,6 +66,12 @@ class ApprovalService:
         approval.comment = comment or approval.comment
         approval.pipeline_run_name = execution.pipeline_run_name
         approval.approved_at = datetime.now(timezone.utc)
+        target = ApplicationReleaseTarget.query.filter_by(approval_id=approval.id).first()
+        if target:
+            target.pipeline_run_name = execution.pipeline_run_name
+            target.build_version_id = approval.build_version_id
+            target.status = "Running"
+            target.error_message = None
         db.session.commit()
         return approval
 
@@ -76,5 +82,9 @@ class ApprovalService:
         approval.approver = approver
         approval.comment = comment
         approval.rejected_at = datetime.now(timezone.utc)
+        target = ApplicationReleaseTarget.query.filter_by(approval_id=approval.id).first()
+        if target:
+            target.status = "Rejected"
+            target.error_message = comment
         db.session.commit()
         return approval

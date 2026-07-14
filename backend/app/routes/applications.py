@@ -8,6 +8,9 @@ from app.services.deployment_plan_service import DeploymentPlanService
 from app.services.release_service import ReleaseService
 from app.services.approval_service import ApprovalService
 from app.services.build_version_service import BuildVersionService
+from app.services.git_metadata_service import GitMetadataService
+from app.services.release_batch_service import ReleaseBatchService
+from app.services.delivery_reconciler import DeliveryReconciler
 from app.services.project_service import ProjectService
 from app.utils.errors import ApiError
 from app.utils.response import success
@@ -97,6 +100,45 @@ def deploy_application(project_id, app_id):
 @bp.get("/<int:app_id>/build-versions")
 def list_build_versions(project_id, app_id):
     return success(BuildVersionService().list(get_application(project_id, app_id)))
+
+
+@bp.get("/<int:app_id>/git/branches")
+def list_git_branches(project_id, app_id):
+    app = get_application(project_id, app_id)
+    return success(GitMetadataService().list_branches(app.repo_url))
+
+
+@bp.get("/<int:app_id>/git/branches/<path:branch>/commits")
+def list_git_commits(project_id, app_id, branch):
+    app = get_application(project_id, app_id)
+    limit = request.args.get("limit", 20, type=int)
+    return success(GitMetadataService().list_commits(app.repo_url, branch, limit))
+
+
+@bp.post("/<int:app_id>/release-batches")
+def create_release_batch(project_id, app_id):
+    payload = json_object(request.get_json(silent=True), required=True)
+    app = get_application(project_id, app_id)
+    batch = ReleaseBatchService().create(
+        app, payload.get("branch"), payload.get("git_commit"),
+        payload.get("environment_ids"), g.current_user.username,
+    )
+    return success(batch.to_dict(), "发布批次已创建", 201)
+
+
+@bp.get("/<int:app_id>/release-batches")
+def list_release_batches(project_id, app_id):
+    app = get_application(project_id, app_id)
+    for batch in ReleaseBatchService().list(app):
+        DeliveryReconciler().reconcile_batch(batch.id)
+    return success([batch.to_dict() for batch in ReleaseBatchService().list(app)])
+
+
+@bp.get("/<int:app_id>/release-batches/<int:batch_id>")
+def release_batch_detail(project_id, app_id, batch_id):
+    app = get_application(project_id, app_id)
+    batch = ReleaseBatchService().get(app, batch_id)
+    return success(DeliveryReconciler().reconcile_batch(batch.id))
 
 
 @bp.post("/<int:app_id>/build-versions")

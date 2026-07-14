@@ -17,6 +17,7 @@ spec:
     - {name: max_surge, type: string}
     - {name: ingress_host, type: string}
     - {name: config_map_name, type: string}
+    - {name: env_config_map_name, type: string}
     - {name: secret_name, type: string}
     - {name: registry_secret_name, type: string}
     - {name: kubeconfig_secret_name, type: string}
@@ -37,19 +38,28 @@ spec:
           - {name: deploy_strategy}
           - {name: max_unavailable}
           - {name: max_surge}
+          - {name: ingress_host}
+          - {name: config_map_name}
+          - {name: env_config_map_name}
+          - {name: secret_name}
           - {name: registry_secret_name}
           - {name: kubeconfig_secret_name}
           - {name: kube_context}
         steps:
           - name: kubectl
-            image: bitnami/kubectl:1.31
+            image: alpine/k8s:1.31.0
             volumeMounts: [{name: target-kubeconfig, mountPath: /var/run/aegis/kubeconfig, readOnly: true}]
             script: |
               export KUBECONFIG=/var/run/aegis/kubeconfig/config
               kubectl --context="$(params.kube_context)" -n "$(params.namespace)" create deployment "$(params.app)" --image="$(params.image)" --dry-run=client -o yaml | kubectl --context="$(params.kube_context)" -n "$(params.namespace)" apply -f -
               kubectl --context="$(params.kube_context)" -n "$(params.namespace)" scale deployment "$(params.app)" --replicas="$(params.replicas)"
               kubectl --context="$(params.kube_context)" -n "$(params.namespace)" set resources deployment "$(params.app)" --requests="cpu=$(params.cpu_request),memory=$(params.memory_request)" --limits="cpu=$(params.cpu_limit),memory=$(params.memory_limit)"
+              kubectl --context="$(params.kube_context)" -n "$(params.namespace)" get configmap "$(params.env_config_map_name)" -o go-template='{{range $key, $value := .data}}{{printf "%s\t%s\n" $key $value}}{{end}}' | while IFS="$(printf '\t')" read -r key value; do
+                [ -z "$key" ] || kubectl --context="$(params.kube_context)" -n "$(params.namespace)" set env deployment "$(params.app)" "$key=$value"
+              done
+              kubectl --context="$(params.kube_context)" -n "$(params.namespace)" set env deployment "$(params.app)" --from=secret/$(params.secret_name)
               kubectl --context="$(params.kube_context)" -n "$(params.namespace)" expose deployment "$(params.app)" --port="$(params.port)" --target-port="$(params.port)" --dry-run=client -o yaml | kubectl --context="$(params.kube_context)" -n "$(params.namespace)" apply -f -
+              if [ -n "$(params.ingress_host)" ]; then kubectl --context="$(params.kube_context)" -n "$(params.namespace)" create ingress "$(params.app)" --rule="$(params.ingress_host)/*=$(params.app):$(params.port)" --dry-run=client -o yaml | kubectl --context="$(params.kube_context)" -n "$(params.namespace)" apply -f -; fi
         volumes: [{name: target-kubeconfig, secret: {secretName: $(params.kubeconfig_secret_name), optional: false}}]
       params:
         - {name: image, value: $(params.image)}
@@ -64,6 +74,10 @@ spec:
         - {name: deploy_strategy, value: $(params.deploy_strategy)}
         - {name: max_unavailable, value: $(params.max_unavailable)}
         - {name: max_surge, value: $(params.max_surge)}
+        - {name: ingress_host, value: $(params.ingress_host)}
+        - {name: config_map_name, value: $(params.config_map_name)}
+        - {name: env_config_map_name, value: $(params.env_config_map_name)}
+        - {name: secret_name, value: $(params.secret_name)}
         - {name: registry_secret_name, value: $(params.registry_secret_name)}
         - {name: kubeconfig_secret_name, value: $(params.kubeconfig_secret_name)}
         - {name: kube_context, value: $(params.kube_context)}

@@ -29,6 +29,9 @@ export interface BuildVersion {
   git_repo: string
   git_branch: string
   git_commit?: string
+  build_type?: string
+  commit_message?: string
+  commit_author?: string
   image_name: string
   image_tag: string
   image_digest?: string
@@ -39,6 +42,19 @@ export interface BuildVersion {
   created_at: string
   finished_at?: string
   error_message?: string
+}
+
+export interface GitBranch { name: string; sha: string }
+export interface GitCommit { sha: string; message: string; author: string; authored_at: string }
+export interface ReleaseTarget {
+  id: number; batch_id: number; environment_id: number; environment?: string; display_name?: string
+  namespace?: string; build_version_id?: number; pipeline_run_name?: string; status: string
+  approval_id?: number; error_message?: string; created_at: string; updated_at: string
+}
+export interface ReleaseBatch {
+  id: number; application_id: number; project_id: number; build_version_id?: number
+  branch: string; git_commit: string; commit_message?: string; commit_author?: string
+  status: string; created_by: string; created_at: string; updated_at: string; targets: ReleaseTarget[]
 }
 
 export interface Release {

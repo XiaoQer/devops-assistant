@@ -7,10 +7,10 @@ from app.models import Application, PipelineExecution, ApplicationEnvironment, A
 from app.utils.errors import ApiError
 from .repo_analyzer_service import RepoAnalyzerService
 from .tekton_service import TektonService
+from .git_metadata_service import GitMetadataService
 from .release_service import ReleaseService
 from .configuration_service import ConfigurationService
 from .kubernetes_service import KubernetesService
-from .environment_service import EnvironmentService
 from .registry_service import RegistryService
 from .delivery_context_service import DeliveryContextService
 from .kubernetes_cluster_service import KubernetesClusterService
@@ -76,16 +76,24 @@ class ApplicationService:
         app.application_spec = self._spec(app)
         db.session.add(app)
         db.session.commit()
-        EnvironmentService().list(app, ensure_defaults=True)
         return app
 
-    def build(self, app, build_user="local-user"):
+    def build(self, app, build_user="local-user", branch=None, git_commit=None,
+              commit_message=None, commit_author=None, release_batch=None):
         pipeline = self.BUILD_PIPELINES.get((app.language, app.build_type))
         if not pipeline:
             raise ApiError(f"暂不支持 {app.language}/{app.build_type} 项目", 422, "UNSUPPORTED_BUILD_TYPE")
         registry = RegistryService().get_project_default(app.project_id)
         if not registry:
             raise ApiError("项目尚未配置默认镜像仓库", 409, "REGISTRY_REQUIRED")
+        branch = branch or app.branch
+        if not git_commit:
+            commits = GitMetadataService().list_commits(app.repo_url, branch, 1)
+            if not commits:
+                raise ApiError("分支没有可构建的提交", 422, "GIT_COMMIT_NOT_FOUND")
+            git_commit = commits[0]["sha"]
+            commit_message = commits[0]["message"]
+            commit_author = commits[0]["author"]
         image_name = f"{registry.image_prefix}/{app.name}"
         tag = f"build-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:6]}"
         version = ApplicationBuildVersion(
@@ -93,7 +101,10 @@ class ApplicationService:
             project_id=app.project_id,
             version=tag,
             git_repo=app.repo_url,
-            git_branch=app.branch,
+            git_branch=branch,
+            git_commit=git_commit,
+            commit_message=commit_message,
+            commit_author=commit_author,
             image_name=image_name,
             image_tag=tag,
             created_by=build_user,
@@ -106,9 +117,11 @@ class ApplicationService:
             registry, central_kubernetes, tekton_namespace
         )
         version.pipeline_run_name = TektonService().create_build_pipeline_run(
-            pipeline, app.name, app.repo_url, app.branch, image_name, tag,
-            tekton_namespace, registry_secret,
+            pipeline, app.name, app.repo_url, branch, image_name, tag,
+            tekton_namespace, registry_secret, git_commit,
         )
+        if release_batch:
+            version.release_batch = release_batch
         db.session.commit()
         return version
 
@@ -119,10 +132,7 @@ class ApplicationService:
             application_id=app.id, environment_name=environment_name
         ).first()
         if not environment:
-            EnvironmentService().list(app, ensure_defaults=True)
-            environment = ApplicationEnvironment.query.filter_by(
-                application_id=app.id, environment_name=environment_name
-            ).first()
+            environment = None
         if environment:
             payload.setdefault("namespace", environment.namespace)
         build_version = None
@@ -167,6 +177,7 @@ class ApplicationService:
             "max_surge": "25%",
             "ingress_host": "",
             "config_map_name": f"{app.name}-config",
+            "env_config_map_name": f"{app.name}-env",
             "secret_name": f"{app.name}-secret",
             "registry_secret_name": "",
         }
@@ -215,6 +226,7 @@ class ApplicationService:
                 "ingress_host": environment.ingress_domain or "",
                 **{key: value or "" for key, value in resources.items()},
             })
+            deployment_config.update(resources.get("resource_overrides", {}))
         payload["image_name"] = image_name
         payload["image_tag"] = image_tag
         if build_version:

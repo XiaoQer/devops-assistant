@@ -283,8 +283,63 @@ body[data-theme='dark'] .glass-card {
 }
 
 .el-message-box, .el-dialog, .el-drawer {
-  background: #1b2431 !important;
-  border: 1px solid var(--border) !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, .16) !important;
+}
+
+.el-dialog__header,
+.el-drawer__header {
+  margin-right: 0 !important;
+  padding: 22px 28px 16px !important;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.el-dialog__title,
+.el-drawer__title {
+  color: #172033 !important;
+  font-size: 20px !important;
+  font-weight: 750 !important;
+}
+
+.el-dialog__headerbtn,
+.el-drawer__close-btn {
+  color: #64748b !important;
+}
+
+.el-dialog__body {
+  padding: 20px 28px 24px !important;
+  color: #172033 !important;
+}
+
+.el-dialog__footer {
+  padding: 16px 28px 22px !important;
+  border-top: 1px solid #edf1f6;
+}
+
+.el-message-box.light-confirm-box {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, .16) !important;
+}
+
+.light-confirm-box .el-message-box__title,
+.light-confirm-box .el-message-box__message {
+  color: #172033 !important;
+}
+
+.light-confirm-box .el-message-box__message {
+  color: #53627a !important;
+}
+
+.light-confirm-box .el-message-box__headerbtn {
+  color: #7b879b !important;
+}
+
+.light-confirm-box .el-button--default {
+  color: #172033 !important;
+  background: #ffffff !important;
+  border-color: #d8e0eb !important;
 }
 
 .el-descriptions {

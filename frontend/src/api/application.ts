@@ -35,6 +35,16 @@ export const applicationApi = {
     client.get<never, BuildVersion[]>(`/projects/${projectId}/applications/${id}/build-versions`),
   build: (projectId: number, id: number) =>
     client.post<never, BuildVersion>(`/projects/${projectId}/applications/${id}/build-versions`, {}),
+  gitBranches: (projectId: number, id: number) =>
+    client.get<never, import('../types').GitBranch[]>(`/projects/${projectId}/applications/${id}/git/branches`),
+  gitCommits: (projectId: number, id: number, branch: string, limit = 20) =>
+    client.get<never, import('../types').GitCommit[]>(`/projects/${projectId}/applications/${id}/git/branches/${encodeURIComponent(branch)}/commits`, { params: { limit } }),
+  createReleaseBatch: (projectId: number, id: number, input: { branch: string; git_commit: string; environment_ids: number[] }) =>
+    client.post<never, import('../types').ReleaseBatch>(`/projects/${projectId}/applications/${id}/release-batches`, input),
+  releaseBatches: (projectId: number, id: number) =>
+    client.get<never, import('../types').ReleaseBatch[]>(`/projects/${projectId}/applications/${id}/release-batches`),
+  releaseBatch: (projectId: number, id: number, batchId: number) =>
+    client.get<never, import('../types').ReleaseBatch>(`/projects/${projectId}/applications/${id}/release-batches/${batchId}`),
   releases: (projectId: number, id: number, environment?: string) =>
     client.get<never, Release[]>(`/projects/${projectId}/applications/${id}/releases`, {
       params: { environment },
@@ -64,9 +74,10 @@ export const applicationApi = {
     client.get<never, ApplicationConfig[]>(`/projects/${projectId}/applications/${id}/configs`, { params: { environmentId, type } }),
   saveConfig: (projectId: number, id: number, input: Record<string, unknown>) =>
     client.post<never, ApplicationConfig>(`/projects/${projectId}/applications/${id}/configs`, input),
-  updateConfig: (projectId: number, configId: number, input: Record<string, unknown>) =>
-    client.patch<never, ApplicationConfig>(`/projects/${projectId}/configs/${configId}`, input),
-  deleteConfig: (projectId: number, configId: number) => client.delete(`/projects/${projectId}/configs/${configId}`),
+  updateConfig: (projectId: number, applicationId: number, configId: number, input: Record<string, unknown>) =>
+    client.patch<never, ApplicationConfig>(`/projects/${projectId}/applications/${applicationId}/configs/${configId}`, input),
+  deleteConfig: (projectId: number, applicationId: number, configId: number) =>
+    client.delete(`/projects/${projectId}/applications/${applicationId}/configs/${configId}`),
   podLogs: (projectId: number, id: number, pod: string, environment: string) =>
     client.get<never, {logs:string}>(`/projects/${projectId}/applications/${id}/runtime/pods/${pod}/logs`, { params: { environment } }),
   podYaml: (projectId: number, id: number, pod: string, environment: string) =>

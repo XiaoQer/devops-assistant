@@ -563,6 +563,24 @@ class ProjectApplicationRoutesTest(unittest.TestCase):
 
         self.assertEqual([item.id for item in items], [self.config.id])
 
+    def test_config_create_rejects_duplicate_active_key(self):
+        response = csrf_post(
+            self.client,
+            f"/api/projects/{self.project_a.id}/applications/{self.application.id}/configs",
+            self.csrf_token,
+            json={
+                "environment_id": self.environment.id,
+                "config_type": "env",
+                "config_key": self.config.config_key,
+                "value": "debug",
+            },
+        )
+
+        self.assertEqual(response.status_code, 409)
+        body = response.get_json()
+        self.assertFalse(body["success"])
+        self.assertEqual(body["error"]["code"], "CONFIG_EXISTS")
+
     def test_config_mutations_require_environment_to_belong_to_application(self):
         other_application = Application(
             project_id=self.project_b.id,

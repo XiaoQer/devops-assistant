@@ -12,6 +12,8 @@ class ApplicationBuildVersion(db.Model):
     git_repo = db.Column(db.String(500), nullable=False)
     git_branch = db.Column(db.String(120), nullable=False)
     git_commit = db.Column(db.String(64))
+    commit_message = db.Column(db.String(500))
+    commit_author = db.Column(db.String(255))
     image_name = db.Column(db.String(300), nullable=False)
     image_tag = db.Column(db.String(120), nullable=False)
     image_digest = db.Column(db.String(255))
@@ -23,6 +25,7 @@ class ApplicationBuildVersion(db.Model):
     error_message = db.Column(db.Text)
 
     application = db.relationship("Application", back_populates="build_versions")
+    release_batch = db.relationship("ApplicationReleaseBatch", back_populates="build_version", uselist=False)
 
     @property
     def image(self):
@@ -37,6 +40,8 @@ class ApplicationBuildVersion(db.Model):
             "git_repo": self.git_repo,
             "git_branch": self.git_branch,
             "git_commit": self.git_commit,
+            "commit_message": self.commit_message,
+            "commit_author": self.commit_author,
             "image_name": self.image_name,
             "image_tag": self.image_tag,
             "image_digest": self.image_digest,

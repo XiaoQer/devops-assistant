@@ -2,32 +2,45 @@
   <div class="page-stack">
     <div class="section-head">
       <div>
-        <h3>Configuration center</h3>
-        <p>用版本化配置工作区来管理环境变量、Secret 和运行参数。</p>
+        <h3>配置中心</h3>
+        <p>当前配置仅作用于所选环境，变更会保留版本历史并在发布时注入 Kubernetes 工作负载。</p>
       </div>
       <div class="section-actions">
         <el-select v-model="environmentId" style="width: 180px">
-          <el-option v-for="env in environments" :key="env.id" :label="env.display_name || env.environment_name" :value="env.id" />
+          <el-option v-for="env in environments" :key="env.id" :label="`${env.display_name || env.environment_name} · ${env.namespace}`" :value="env.id" />
         </el-select>
-        <el-button type="primary" :disabled="!environmentId" @click="openCreate">＋ 添加配置</el-button>
+        <el-button v-if="type !== 'env'" type="primary" :disabled="!environmentId" @click="openCreate">＋ 添加配置</el-button>
       </div>
     </div>
 
     <el-tabs v-model="type" class="config-tabs">
-      <el-tab-pane v-for="tab in tabs" :key="tab.value" :label="tab.label" :name="tab.value" />
+      <el-tab-pane v-for="tab in tabs" :key="tab.value" :label="tab.label" :name="tab.value" :disabled="tab.disabled" />
     </el-tabs>
 
     <section class="surface list-card">
       <div class="surface-header">
         <div>
           <h3>{{ activeLabel }}</h3>
-          <p>{{ descriptions[type] }}</p>
+          <p>{{ selectedEnvironmentLabel }} · {{ descriptions[type] }}</p>
         </div>
         <span>{{ configs.length }} items</span>
       </div>
 
+      <div v-if="type === 'env'" class="env-editor">
+        <div class="env-editor-head">
+          <span>KEY</span>
+          <span>VALUE</span>
+          <span>操作</span>
+        </div>
+        <div class="env-editor-add">
+          <el-input v-model="inlineKey" placeholder="例如 DATABASE_URL" />
+          <el-input v-model="inlineValue" placeholder="输入环境变量值" />
+          <el-button type="primary" :loading="savingInline" :disabled="!environmentId || !inlineKey.trim()" @click="addInline">添加变量</el-button>
+        </div>
+      </div>
+
       <el-skeleton :loading="loading" animated :rows="5">
-        <div v-if="configs.length" class="config-list">
+        <div v-if="configs.length && type !== 'env'" class="config-list">
           <article v-for="row in configs" :key="row.id" class="config-card">
             <div class="config-main">
               <div class="config-head">
@@ -49,19 +62,24 @@
             </div>
           </article>
         </div>
-        <EmptyState v-else title="该环境暂无配置" description="添加第一条配置后，所有变更都会自动保留版本历史。" />
-      </el-skeleton>
-    </section>
-
-    <section class="surface redeploy-card">
-      <div>
-        <span>↻</span>
-        <div>
-          <b>配置变更尚未应用？</b>
-          <p>保存配置后可直接重新部署，让最新配置进入 Kubernetes 工作负载。</p>
+        <div v-else-if="configs.length && type === 'env'" class="env-list">
+          <div v-for="row in configs" :key="row.id" class="env-row">
+            <el-input :model-value="row.config_key" disabled />
+            <el-input v-model="row.value" type="text" placeholder="输入变量值" />
+            <div class="env-row-actions">
+              <el-button size="small" type="primary" :loading="savingInlineId === row.id" :disabled="!inlineChanged(row)" @click="saveInline(row)">保存</el-button>
+              <el-button size="small" @click="remove(row)">删除</el-button>
+            </div>
+          </div>
         </div>
-      </div>
-      <el-button :loading="redeploying" @click="redeploy">重新部署</el-button>
+        <div v-else class="config-empty">
+          <span>◇</span>
+          <div>
+            <strong>该环境暂无配置</strong>
+            <p>添加第一条配置后，变更会保留版本历史。</p>
+          </div>
+        </div>
+      </el-skeleton>
     </section>
 
     <el-dialog v-model="dialog" :title="editing ? '编辑配置' : '添加配置'" width="640px">
@@ -72,7 +90,13 @@
           </el-select>
         </el-form-item>
         <el-form-item label="Key">
-          <el-input v-model="form.config_key" :disabled="!!editing" placeholder="DATABASE_URL" />
+          <el-select v-if="form.config_type === 'resource'" v-model="form.config_key" :disabled="!!editing" placeholder="选择资源参数">
+            <el-option v-for="key in resourceKeys" :key="key.value" :label="key.label" :value="key.value" />
+          </el-select>
+          <el-select v-else-if="form.config_type === 'ingress'" v-model="form.config_key" :disabled="!!editing" placeholder="选择 Ingress 参数">
+            <el-option v-for="key in ingressKeys" :key="key.value" :label="key.label" :value="key.value" />
+          </el-select>
+          <el-input v-else v-model="form.config_key" :disabled="!!editing" placeholder="DATABASE_URL" />
         </el-form-item>
         <el-form-item label="Value">
           <el-input v-model="form.value" type="textarea" :rows="8" :placeholder="form.config_type === 'secret' ? '输入新密文值' : '输入配置值'" />
@@ -94,24 +118,27 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { applicationApi } from '../../api/application'
 import type { ApplicationConfig, ApplicationEnvironment } from '../../types'
-import EmptyState from '../common/EmptyState.vue'
 
-const props = defineProps<{ applicationId: number; projectId: number }>()
+const props = defineProps<{ applicationId: number; projectId: number; initialEnvironmentId?: number }>()
 const environments = ref<ApplicationEnvironment[]>([])
 const environmentId = ref(0)
 const configs = ref<ApplicationConfig[]>([])
 const loading = ref(false)
 const saving = ref(false)
-const redeploying = ref(false)
 const dialog = ref(false)
 const editing = ref<ApplicationConfig>()
+const savingInline = ref(false)
+const savingInlineId = ref(0)
+const inlineKey = ref('')
+const inlineValue = ref('')
+const inlineOriginalValues = ref<Record<number, string>>({})
 const type = ref('env')
 const tabs = [
-  { label: 'Environment Variables', value: 'env' },
-  { label: 'ConfigMap', value: 'configmap' },
-  { label: 'Secret', value: 'secret' },
-  { label: 'Resources', value: 'resource' },
-  { label: 'Ingress', value: 'ingress' },
+  { label: '环境变量', value: 'env', disabled: false },
+  { label: 'ConfigMap', value: 'configmap', disabled: true },
+  { label: 'Secret', value: 'secret', disabled: true },
+  { label: '资源参数', value: 'resource', disabled: true },
+  { label: 'Ingress', value: 'ingress', disabled: true },
 ]
 
 const descriptions: Record<string, string> = {
@@ -122,12 +149,36 @@ const descriptions: Record<string, string> = {
   ingress: '域名与流量入口配置',
 }
 
+const resourceKeys = [
+  { label: '副本数', value: 'replicas' },
+  { label: 'CPU Request', value: 'cpu_request' },
+  { label: 'CPU Limit', value: 'cpu_limit' },
+  { label: 'Memory Request', value: 'memory_request' },
+  { label: 'Memory Limit', value: 'memory_limit' },
+  { label: 'Storage Size', value: 'storage_size' },
+  { label: '发布策略', value: 'deploy_strategy' },
+  { label: 'Max Unavailable', value: 'max_unavailable' },
+  { label: 'Max Surge', value: 'max_surge' },
+]
+
+const ingressKeys = [
+  { label: '域名 Host', value: 'host' },
+  { label: '路径 Path', value: 'path' },
+  { label: 'Service Port', value: 'service_port' },
+]
+
 const form = reactive({ config_type: 'env', config_key: '', value: '', change_message: '' })
 const activeLabel = computed(() => tabs.find(tab => tab.value === type.value)?.label)
+const selectedEnvironmentLabel = computed(() => {
+  const env = environments.value.find(item => item.id === environmentId.value)
+  return env ? `当前环境：${env.display_name || env.environment_name}` : '尚未选择环境'
+})
 
 async function init() {
   environments.value = await applicationApi.environments(props.projectId, props.applicationId)
-  environmentId.value = environments.value[0]?.id || 0
+  environmentId.value = props.initialEnvironmentId && environments.value.some(item => item.id === props.initialEnvironmentId)
+    ? props.initialEnvironmentId
+    : environments.value[0]?.id || 0
   load()
 }
 
@@ -136,6 +187,9 @@ async function load() {
   loading.value = true
   try {
     configs.value = await applicationApi.configs(props.projectId, props.applicationId, environmentId.value, type.value)
+    if (type.value === 'env') {
+      inlineOriginalValues.value = Object.fromEntries(configs.value.map(item => [item.id, item.value]))
+    }
   } finally {
     loading.value = false
   }
@@ -145,6 +199,52 @@ function openCreate() {
   editing.value = undefined
   Object.assign(form, { config_type: type.value, config_key: '', value: '', change_message: '' })
   dialog.value = true
+}
+
+async function addInline() {
+  const key = inlineKey.value.trim()
+  if (!key) return ElMessage.warning('请输入变量名')
+  if (!environmentId.value) return ElMessage.warning('请先选择环境')
+  if (configs.value.some(item => item.config_key === key)) return ElMessage.warning(`变量 ${key} 已存在，请直接修改原变量`)
+  savingInline.value = true
+  try {
+    await applicationApi.saveConfig(props.projectId, props.applicationId, {
+      config_type: 'env',
+      config_key: key,
+      value: inlineValue.value,
+      environment_id: environmentId.value,
+      change_message: '新增环境变量',
+    })
+    inlineKey.value = ''
+    inlineValue.value = ''
+    ElMessage.success('环境变量已添加')
+    await load()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '环境变量添加失败')
+  } finally {
+    savingInline.value = false
+  }
+}
+
+async function saveInline(item: ApplicationConfig) {
+  if (!inlineChanged(item)) return
+  savingInlineId.value = item.id
+  try {
+    await applicationApi.updateConfig(props.projectId, props.applicationId, item.id, {
+      value: item.value,
+      change_message: '更新环境变量',
+    })
+    ElMessage.success(`${item.config_key} 已保存`)
+    await load()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '环境变量保存失败')
+  } finally {
+    savingInlineId.value = 0
+  }
+}
+
+function inlineChanged(item: ApplicationConfig) {
+  return item.value !== inlineOriginalValues.value[item.id]
 }
 
 function edit(item: ApplicationConfig) {
@@ -162,7 +262,7 @@ async function save() {
   if (!form.config_key) return ElMessage.warning('请输入配置 Key')
   saving.value = true
   try {
-    if (editing.value) await applicationApi.updateConfig(props.projectId, editing.value.id, { value: form.value, change_message: form.change_message })
+    if (editing.value) await applicationApi.updateConfig(props.projectId, props.applicationId, editing.value.id, { value: form.value, change_message: form.change_message })
     else await applicationApi.saveConfig(props.projectId, props.applicationId, { ...form, environment_id: environmentId.value })
     ElMessage.success('配置新版本已保存')
     dialog.value = false
@@ -173,21 +273,13 @@ async function save() {
 }
 
 async function remove(item: ApplicationConfig) {
-  await ElMessageBox.confirm(`确认删除 ${item.config_key}？历史版本仍会保留。`, '删除配置', { type: 'warning' })
-  await applicationApi.deleteConfig(props.projectId, item.id)
+  await ElMessageBox.confirm(`确认删除 ${item.config_key}？历史版本仍会保留。`, '删除配置', {
+    type: 'warning',
+    customClass: 'light-confirm-box',
+  })
+  await applicationApi.deleteConfig(props.projectId, props.applicationId, item.id)
   ElMessage.success('配置已删除')
   load()
-}
-
-async function redeploy() {
-  redeploying.value = true
-  try {
-    const env = environments.value.find(item => item.id === environmentId.value)
-    const result = await applicationApi.deploy(props.projectId, props.applicationId, { environment: env?.environment_name })
-    ElMessage.success(result.approval_required ? '生产发布审批已提交' : '重新部署已启动')
-  } finally {
-    redeploying.value = false
-  }
 }
 
 function format(value: string) {
@@ -195,6 +287,9 @@ function format(value: string) {
 }
 
 watch([environmentId, type], load)
+watch(() => props.initialEnvironmentId, value => {
+  if (value && environments.value.some(item => item.id === value)) environmentId.value = value
+})
 onMounted(init)
 </script>
 
@@ -227,8 +322,29 @@ onMounted(init)
   margin-bottom: 0;
 }
 
-.list-card,
-.redeploy-card {
+.config-tabs :deep(.el-tabs__nav-wrap::after) {
+  background-color: #e4e9f1;
+}
+
+.config-tabs :deep(.el-tabs__item) {
+  height: 42px;
+  padding: 0 18px;
+  color: #53627a !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.config-tabs :deep(.el-tabs__item.is-active) {
+  color: #2563eb !important;
+}
+
+.config-tabs :deep(.el-tabs__item.is-disabled) {
+  color: #aeb8c7 !important;
+  cursor: not-allowed;
+  opacity: .75;
+}
+
+.list-card {
   box-shadow: none;
 }
 
@@ -237,6 +353,88 @@ onMounted(init)
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.env-editor {
+  padding: 14px 20px 0;
+}
+
+.env-editor-head,
+.env-editor-add,
+.env-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(240px, 1.5fr) 150px;
+  gap: 10px;
+  align-items: center;
+}
+
+.env-editor-head {
+  padding: 0 12px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.env-editor-add {
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.env-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px 20px 20px;
+}
+
+.env-row {
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.env-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.config-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 12px 20px 20px;
+  padding: 18px 20px;
+  border: 1px dashed #d8e0eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.config-empty > span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border-radius: 10px;
+  background: #eaf0ff;
+  color: #2563eb;
+  font-size: 17px;
+}
+
+.config-empty strong {
+  display: block;
+  color: #172033;
+  font-size: 14px;
+}
+
+.config-empty p {
+  margin: 4px 0 0;
+  color: #7b879b;
+  font-size: 12px;
 }
 
 .config-card {
@@ -302,44 +500,9 @@ onMounted(init)
   gap: 8px;
 }
 
-.redeploy-card {
-  padding: 16px 18px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.redeploy-card > div {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.redeploy-card > div > span {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: var(--primary-soft);
-  color: var(--primary);
-}
-
-.redeploy-card b,
-.redeploy-card p {
-  display: block;
-}
-
-.redeploy-card p {
-  margin: 6px 0 0;
-  color: var(--muted);
-}
-
 @media (max-width: 1000px) {
   .section-head,
-  .section-actions,
-  .redeploy-card {
+  .section-actions {
     flex-direction: column;
     align-items: stretch;
   }
@@ -350,6 +513,19 @@ onMounted(init)
 
   .config-head {
     flex-direction: column;
+  }
+
+  .env-editor-head {
+    display: none;
+  }
+
+  .env-editor-add,
+  .env-row {
+    grid-template-columns: 1fr;
+  }
+
+  .env-row-actions {
+    justify-content: flex-start;
   }
 }
 </style>

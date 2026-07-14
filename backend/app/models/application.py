@@ -62,6 +62,10 @@ class Application(db.Model):
         cascade="all, delete-orphan",
         order_by="ApprovalRecord.created_at.desc()",
     )
+    release_batches = db.relationship(
+        "ApplicationReleaseBatch", back_populates="application",
+        cascade="all, delete-orphan", order_by="ApplicationReleaseBatch.created_at.desc()",
+    )
 
     def to_dict(self, include_spec=True):
         latest_execution = next(

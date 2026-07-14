@@ -2,7 +2,7 @@ import unittest
 
 from app import create_app
 from app.extensions import db
-from app.models import Application, ApplicationEnvironment, Project
+from app.models import Application, ApplicationEnvironment, KubernetesCluster, Project
 from app.services.environment_service import EnvironmentService
 from app.utils.errors import ApiError
 
@@ -26,6 +26,15 @@ class EnvironmentServiceTest(unittest.TestCase):
         project = Project(key="gateway", name="Gateway Project")
         db.session.add(project)
         db.session.flush()
+        self.cluster = KubernetesCluster(
+            project_id=project.id,
+            name="LOCAL-TEST",
+            kube_context="local-test",
+            is_default=True,
+            is_active=True,
+        )
+        db.session.add(self.cluster)
+        db.session.flush()
         self.application = Application(
             project_id=project.id,
             name="gateway",
@@ -48,16 +57,16 @@ class EnvironmentServiceTest(unittest.TestCase):
         db.engine.dispose()
         self.context.pop()
 
-    def test_list_creates_default_environments(self):
+    def test_list_keeps_empty_environment_collection(self):
         items = EnvironmentService().list(self.application)
 
-        self.assertEqual([item.environment_name for item in items], ["dev"])
-        self.assertFalse(items[0].approval_required)
+        self.assertEqual(items, [])
 
     def test_delete_rejects_production_environment(self):
         prod = EnvironmentService().create(self.application, {
             "environment_name": "prod",
             "namespace": "gateway-prod",
+            "kubernetes_cluster_id": self.cluster.id,
         })
 
         with self.assertRaises(ApiError) as context:
@@ -65,10 +74,31 @@ class EnvironmentServiceTest(unittest.TestCase):
 
         self.assertEqual(context.exception.code, "PROTECTED_ENVIRONMENT")
 
+    def test_delete_removes_non_production_environment(self):
+        dev = EnvironmentService().create(self.application, {
+            "environment_name": "dev",
+            "namespace": "gateway-dev",
+            "kubernetes_cluster_id": self.cluster.id,
+        })
+
+        EnvironmentService().delete(dev)
+
+        self.assertIsNone(ApplicationEnvironment.query.get(dev.id))
+
+    def test_create_requires_a_kubernetes_cluster(self):
+        with self.assertRaises(ApiError) as context:
+            EnvironmentService().create(self.application, {
+                "environment_name": "qa",
+                "namespace": "gateway-qa",
+            })
+
+        self.assertEqual(context.exception.code, "KUBERNETES_CLUSTER_REQUIRED")
+
     def test_clone_copies_source_environment_configuration(self):
         source = EnvironmentService().create(self.application, {
             "environment_name": "test",
             "namespace": "gateway-test",
+            "kubernetes_cluster_id": self.cluster.id,
             "replicas": 2,
             "cpu_limit": "800m",
             "approval_required": False,

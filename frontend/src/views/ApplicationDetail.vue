@@ -17,144 +17,125 @@
       </PageHeader>
 
       <section class="surface application-summary">
-        <div class="summary-identity">
-          <div class="app-avatar">{{ app.name[0].toUpperCase() }}</div>
-          <div>
-            <div class="summary-pills"><StatusBadge :status="runtime?.status || 'Unknown'" /><span class="soft-pill">{{ environment.toUpperCase() }}</span></div>
-            <strong>{{ app.name }}</strong>
-            <span>{{ app.language }} · {{ app.framework }} · {{ app.build_type }}</span>
+        <div class="summary-heading">
+          <div class="summary-context">
+            <strong>运行环境概览</strong>
+            <span>查看当前应用在各 Kubernetes 环境中的运行状态</span>
           </div>
+          <span class="environment-count">{{ environmentRecords.length }} 个环境</span>
         </div>
-        <div class="summary-stat"><span>Target namespace</span><strong>{{ runtime?.namespace || currentEnvironment?.namespace || app.namespace }}</strong></div>
-        <div class="summary-stat"><span>Replicas</span><strong>{{ runtime ? `${runtime.deployment.ready_replicas} / ${runtime.deployment.replicas}` : '—' }}</strong></div>
-        <div class="summary-stat"><span>Current image</span><strong class="mono">{{ runtime?.deployment.images?.[0] || `${app.image_name || 'not-configured'}:${app.image_tag}` }}</strong></div>
-        <div class="summary-stat"><span>Cluster</span><strong>{{ currentEnvironment?.cluster_name || 'Not bound' }}</strong></div>
+        <div v-if="environmentRecords.length" class="environment-summary-grid">
+          <article
+            v-for="env in environmentRecords"
+            :key="env.id"
+            class="environment-summary-card"
+            :class="{ selected: env.environment_name === environment }"
+            @click="selectEnvironment(env.environment_name)"
+          >
+            <header>
+              <strong>{{ env.display_name || env.environment_name }}</strong>
+            </header>
+            <div class="environment-summary-status">
+              <span>状态</span>
+              <StatusBadge :status="environmentRuntimes[env.environment_name]?.status || env.status || 'Unknown'" />
+            </div>
+            <div class="environment-summary-field">
+              <span>分支</span>
+              <b>{{ latestEnvironmentRelease(env.environment_name)?.git_branch || app.branch }}</b>
+            </div>
+            <div class="environment-summary-field">
+              <span>当前版本</span>
+              <b class="mono">{{ latestEnvironmentRelease(env.environment_name)?.image_tag || '未发布' }}</b>
+            </div>
+            <div class="environment-summary-field">
+              <span>发布时间</span>
+              <b>{{ latestEnvironmentRelease(env.environment_name) ? format(latestEnvironmentRelease(env.environment_name)!.created_at) : '—' }}</b>
+            </div>
+          </article>
+        </div>
+        <div v-else class="environment-summary-empty">尚未配置环境，请在“环境”Tab 中新建目标环境。</div>
       </section>
 
-      <el-dialog v-model="deployDialog" title="Deployment plan" width="780px">
-        <el-skeleton :loading="loadingPlan" animated :rows="8">
-          <template v-if="deployDialog">
-            <section class="deploy-plan-stack">
-              <div class="deploy-selector surface-soft-card">
-                <label>选择构建版本</label>
-                <el-select v-model="deployBuildVersionId" placeholder="请选择已构建版本" style="width: 100%" @change="loadDeployPlan">
-                  <el-option v-for="build in buildVersions.filter(item => item.status === 'Succeeded')" :key="build.id" :label="`${build.version} · ${build.image_tag}`" :value="build.id" />
-                </el-select>
-                <label>Deploy target environment</label>
-                <el-select v-model="deployEnvironment" placeholder="请选择要部署的环境" style="width: 100%" @change="loadDeployPlan">
-                  <el-option v-for="env in environmentOptions" :key="env" :label="env.toUpperCase()" :value="env" />
-                </el-select>
-                <p>本次发布只部署已构建镜像，不会重复执行源码构建。</p>
-              </div>
-
-              <EmptyState
-                v-if="!buildVersions.some(item => item.status === 'Succeeded') && !loadingPlan"
-                title="暂无可发布构建版本"
-                description="请先构建一个成功版本，再选择环境进行发布。"
-                icon="⇢"
-              />
-              <EmptyState v-else-if="!deployEnvironment && !loadingPlan" title="选择目标环境" description="选择已构建版本和目标环境后，平台会生成部署计划与风险检查结果。" icon="⇢" />
-
-              <template v-else-if="deployPlan">
-              <div class="deploy-summary" :class="`risk-${deployPlan.risk_level}`">
-                <div>
-                  <strong>{{ riskLabel(deployPlan.risk_level) }}</strong>
-                  <p>{{ deployPlan.summary }}</p>
-                </div>
-                <span class="soft-pill">{{ environment.toUpperCase() }}</span>
-              </div>
-
-              <div class="deploy-target-grid">
-                <article>
-                  <label>Target namespace</label>
-                  <b>{{ deployPlan.target.namespace }}</b>
-                </article>
-                <article>
-                  <label>Image</label>
-                  <b>{{ deployPlan.target.image_name }}:{{ deployPlan.target.image_tag }}</b>
-                </article>
-                <article>
-                  <label>Pipeline</label>
-                  <b>{{ deployPlan.target.pipeline_name || 'Unavailable' }}</b>
-                </article>
-                <article>
-                  <label>Delivery mode</label>
-                  <b>{{ deployPlan.target.approval_required ? 'Approval required' : 'Direct delivery' }}</b>
-                </article>
-              </div>
-
-              <div class="plan-check-list">
-                <article
-                  v-for="check in deployPlan.checks"
-                  :key="check.name"
-                  class="plan-check-item"
-                  :class="`status-${check.status}`"
-                >
-                  <div class="plan-check-head">
-                    <strong>{{ check.summary }}</strong>
-                    <span>{{ check.status.toUpperCase() }}</span>
-                  </div>
-                  <p>{{ check.detail }}</p>
-                </article>
-              </div>
-              </template>
-            </section>
-          </template>
-        </el-skeleton>
+      <el-dialog v-model="deployDialog" title="发布应用" width="720px" class="release-dialog">
+        <section class="release-flow">
+          <div class="release-step">
+            <label>1. 选择分支</label>
+            <el-select v-model="releaseBranch" filterable style="width:100%" :loading="releaseLoading" @change="loadReleaseCommits">
+              <el-option v-for="item in releaseBranches" :key="item.name" :label="item.name" :value="item.name" />
+            </el-select>
+          </div>
+          <div class="release-step">
+            <label>2. 选择提交</label>
+            <el-select v-model="releaseCommit" style="width:100%" :loading="releaseLoading" placeholder="选择最近 20 条提交">
+              <el-option v-for="item in releaseCommits" :key="item.sha" :label="`${item.sha.slice(0, 8)} · ${item.message}`" :value="item.sha">
+                <div class="commit-option"><b>{{ item.message }}</b><small>{{ item.sha.slice(0, 12) }} · {{ item.author }}</small></div>
+              </el-option>
+            </el-select>
+          </div>
+          <div class="release-step">
+            <label>3. 发布环境</label>
+            <el-checkbox-group v-model="releaseEnvironmentIds" class="release-environments">
+              <el-checkbox v-for="env in environmentRecords" :key="env.id" :label="env.id" border>
+                {{ env.display_name || env.environment_name }} · {{ env.namespace }}{{ env.approval_required ? ' · 需审批' : '' }}
+              </el-checkbox>
+            </el-checkbox-group>
+          </div>
+          <p class="release-hint">一次构建，按所选环境分别部署同一个镜像版本。</p>
+        </section>
         <template #footer>
           <el-button @click="deployDialog = false">取消</el-button>
-          <el-button
-            type="primary"
-            :disabled="!deployEnvironment || !deployPlan?.can_deploy || loadingPlan"
-            :loading="deploying"
-            @click="confirmDeploy"
-          >
-            {{ deployPlan?.target.approval_required ? '提交审批' : '确认发布' }}
-          </el-button>
+          <el-button type="primary" :disabled="!releaseBranch || !releaseCommit || !releaseEnvironmentIds.length" :loading="deploying" @click="confirmReleaseBatch">确认发布</el-button>
         </template>
       </el-dialog>
 
+      <el-drawer
+        v-model="environmentConfigDrawer"
+        :title="`${configEnvironmentLabel} · 环境配置`"
+        size="860px"
+        destroy-on-close
+        class="environment-config-drawer"
+      >
+        <ConfigurationCenter
+          :application-id="app.id"
+          :project-id="projectId"
+          :initial-environment-id="configEnvironmentId"
+        />
+      </el-drawer>
+
       <el-tabs v-model="activeTab" class="detail-tabs">
         <el-tab-pane label="服务概览" name="overview"><ApplicationOverview :application="app" /></el-tab-pane>
-        <el-tab-pane :label="`环境 (${environmentRecords.length})`" name="environments"><EnvironmentCenter :application-id="app.id" :project-id="app.project_id || 0" /></el-tab-pane>
-        <el-tab-pane :label="`Pipeline (${executions.length})`" name="pipeline">
+        <el-tab-pane :label="`环境 (${environmentRecords.length})`" name="environments"><EnvironmentCenter :application-id="app.id" :project-id="app.project_id || 0" @configure="openEnvironmentConfig" /></el-tab-pane>
+        <el-tab-pane :label="`Pipeline (${buildVersions.length})`" name="pipeline">
           <section class="surface tab-card pipeline-panel">
             <div class="surface-header">
               <div>
-                <h3>构建与部署执行</h3>
-                <p>中央 Tekton PipelineRun 及其交付状态</p>
+                <h3>构建版本与发布批次</h3>
+                <p>一次构建，多环境复用同一个镜像版本</p>
               </div>
               <div class="pipeline-panel-actions">
-                <el-button :loading="building" @click="buildNow">构建新版本</el-button>
-                <el-button type="primary" @click="openDeployPlan">发布已有版本</el-button>
+                <el-button @click="refreshReleaseBatches">刷新状态</el-button>
+                <el-button :loading="deploying" @click="openDeployPlan">构建新版本</el-button>
               </div>
             </div>
             <div v-if="buildVersions.length" class="build-version-list">
-              <div class="build-version-head"><strong>可发布构建版本</strong><span>{{ buildVersions.length }} versions</span></div>
+              <div class="build-version-head"><strong>构建版本</strong><span>{{ buildVersions.length }} versions</span></div>
               <article v-for="build in buildVersions.slice(0, 4)" :key="build.id" class="build-version-item">
-                <div><b>{{ build.version }}</b><small>{{ build.image }} · {{ build.git_branch }} · {{ format(build.created_at) }}</small><small v-if="build.error_message" class="build-error">{{ build.error_message }}</small></div>
-                <StatusBadge :status="build.status" />
-                <el-button v-if="build.pipeline_run_name" text @click="$router.push(`/devcenter/projects/${projectId}/pipelines/${build.pipeline_run_name}`)">查看过程</el-button>
-                <el-button v-if="build.status === 'Succeeded'" text @click="openDeployPlan(build.id)">发布</el-button>
-              </article>
-            </div>
-            <div v-if="executions.length" class="pipeline-list">
-              <article v-for="(run, index) in executions" :key="run.pipeline_run_name" class="pipeline-item">
-                <div class="pipeline-index">{{ String(index + 1).padStart(2, '0') }}</div>
-                <div class="pipeline-main">
-                  <div class="pipeline-name-row">
-                    <strong>{{ run.pipeline_run_name }}</strong>
-                    <StatusBadge :status="run.status" />
+                <div class="build-version-main">
+                  <b>{{ build.version }}</b>
+                  <div class="build-info-grid">
+                    <span><i>镜像</i>{{ build.image }}</span>
+                    <span><i>代码</i>{{ build.git_branch }} · {{ build.git_commit?.slice(0, 8) || '未锁定提交' }}</span>
+                    <span><i>创建</i>{{ format(build.created_at) }}</span>
+                    <span v-if="buildReleaseBatch(build.id)"><i>发布</i>{{ buildReleaseBatch(build.id)?.status }} · {{ buildReleaseBatch(build.id)?.targets.length }} 个环境</span>
                   </div>
-                  <div class="pipeline-meta">
-                    <span>创建于 {{ format(run.created_at) }}</span>
-                    <span v-if="run.error_message">{{ run.error_message }}</span>
-                  </div>
+                  <small v-if="build.error_message" class="build-error">{{ build.error_message }}</small>
                 </div>
-                <el-button class="pipeline-action" text @click="$router.push(`/devcenter/projects/${projectId}/pipelines/${run.pipeline_run_name}`)">查看详情 <span>→</span></el-button>
+                <StatusBadge :status="build.status" />
+                <el-button v-if="build.pipeline_run_name" text @click="$router.push(`/devcenter/projects/${projectId}/pipelines/${build.pipeline_run_name}`)">详情</el-button>
+                <el-button v-if="build.status === 'Succeeded' && !buildReleaseBatch(build.id)" text @click="openDeployPlan">选择环境发布</el-button>
               </article>
             </div>
-            <EmptyState v-else title="暂无 Pipeline 执行" description="点击新建发布启动第一条流水线。" />
+            <EmptyState v-if="!buildVersions.length" title="暂无构建版本" description="选择分支和提交后开始构建，构建完成后可发布到多个环境。" />
           </section>
         </el-tab-pane>
         <el-tab-pane :label="`发布记录 (${releases.length})`" name="releases"><ReleaseHistoryTable :releases="releases" :rollback-id="rollbackId" @logs="openLogs" @rollback="rollback" /></el-tab-pane>
@@ -176,10 +157,12 @@ import type {
   Application,
   BuildVersion,
   ApplicationEnvironment,
-  DeploymentPlan,
   Execution,
   Release,
   RuntimeStatus,
+  GitBranch,
+  GitCommit,
+  ReleaseBatch,
 } from '../types'
 import PageHeader from '../components/common/PageHeader.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
@@ -198,22 +181,33 @@ const executions = ref<Execution[]>([])
 const buildVersions = ref<BuildVersion[]>([])
 const releases = ref<Release[]>([])
 const runtime = ref<RuntimeStatus>()
+const environmentRuntimes = ref<Record<string, RuntimeStatus | undefined>>({})
+const environmentReleases = ref<Record<string, Release[]>>({})
 const environmentRecords = ref<ApplicationEnvironment[]>([])
 const activeTab = ref('overview')
 const environment = ref('dev')
 const loadingApp = ref(true)
 const loadingRuntime = ref(false)
 const deploying = ref(false)
-const building = ref(false)
 const deployDialog = ref(false)
-const loadingPlan = ref(false)
-const deployEnvironment = ref('')
-const deployBuildVersionId = ref<number>()
-const deployPlan = ref<DeploymentPlan>()
+const releaseLoading = ref(false)
+const releaseBranches = ref<GitBranch[]>([])
+const releaseCommits = ref<GitCommit[]>([])
+const releaseBranch = ref('')
+const releaseCommit = ref('')
+const releaseEnvironmentIds = ref<number[]>([])
+const releaseBatch = ref<ReleaseBatch>()
+const releaseBatches = ref<ReleaseBatch[]>([])
+const configEnvironmentId = ref<number>()
+const environmentConfigDrawer = ref(false)
 const rollbackId = ref(0)
 const environmentOptions = computed(() => environmentRecords.value.map(item => item.environment_name))
 const projectId = computed(() => Number(route.params.projectId))
 const currentEnvironment = computed(() => environmentRecords.value.find(item => item.environment_name === environment.value))
+const configEnvironmentLabel = computed(() => {
+  const env = environmentRecords.value.find(item => item.id === configEnvironmentId.value)
+  return env?.display_name || env?.environment_name || '当前环境'
+})
 
 const shortRepo = (url: string) => url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '')
 const format = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false })
@@ -229,13 +223,19 @@ async function load() {
       applicationApi.buildVersions(projectId.value, id),
     ])
     app.value = application
+    const requestedTab = String(route.query.tab || '')
+    if (['overview', 'environments', 'pipeline', 'releases', 'runtime', 'config', 'logs'].includes(requestedTab)) {
+      activeTab.value = requestedTab
+    }
     executions.value = executionItems
     environmentRecords.value = envItems
     buildVersions.value = buildItems
+    releaseBatches.value = await applicationApi.releaseBatches(projectId.value, id)
     if (!environmentOptions.value.includes(environment.value)) {
-      environment.value = environmentOptions.value[0] || 'dev'
+      environment.value = environmentOptions.value[0] || ''
     }
     releases.value = await applicationApi.releases(projectId.value, id, environment.value)
+    await loadEnvironmentStatuses()
     await loadRuntime()
   } catch (error) {
     ElMessage.error((error as Error).message)
@@ -245,14 +245,52 @@ async function load() {
 }
 
 async function loadRuntime() {
+  if (!environment.value) {
+    runtime.value = undefined
+    return
+  }
   loadingRuntime.value = true
   try {
     runtime.value = await applicationApi.status(projectId.value, Number(route.params.id), environment.value)
+    environmentRuntimes.value = { ...environmentRuntimes.value, [environment.value]: runtime.value }
   } catch {
     runtime.value = undefined
   } finally {
     loadingRuntime.value = false
   }
+}
+
+async function loadEnvironmentStatuses() {
+  const entries = await Promise.all(environmentRecords.value.map(async env => {
+    try {
+      const [status, releasesForEnvironment] = await Promise.all([
+        applicationApi.status(projectId.value, Number(route.params.id), env.environment_name),
+        applicationApi.releases(projectId.value, Number(route.params.id), env.environment_name),
+      ])
+      return { name: env.environment_name, status, releases: releasesForEnvironment }
+    } catch {
+      return { name: env.environment_name, status: undefined, releases: [] as Release[] }
+    }
+  }))
+  environmentRuntimes.value = Object.fromEntries(entries.map(item => [item.name, item.status]))
+  environmentReleases.value = Object.fromEntries(entries.map(item => [item.name, item.releases]))
+}
+
+function latestEnvironmentRelease(environmentName: string) {
+  return environmentReleases.value[environmentName]?.[0]
+}
+
+function buildReleaseBatch(buildId: number) {
+  return releaseBatches.value.find(batch => batch.build_version_id === buildId)
+}
+
+function selectEnvironment(value: string) {
+  environment.value = value
+}
+
+function openEnvironmentConfig(environmentId: number) {
+  configEnvironmentId.value = environmentId
+  environmentConfigDrawer.value = true
 }
 
 async function loadEnvironment() {
@@ -261,77 +299,68 @@ async function loadEnvironment() {
     applicationApi.releases(projectId.value, Number(route.params.id), environment.value),
     loadRuntime(),
   ])
+  environmentReleases.value = { ...environmentReleases.value, [environment.value]: releases.value }
 }
 
-async function openDeployPlan(versionId?: number) {
+async function refreshReleaseBatches() {
+  if (!app.value) return
+  try {
+    releaseBatches.value = await applicationApi.releaseBatches(projectId.value, app.value.id)
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
+async function openDeployPlan() {
   deployDialog.value = true
-  deployEnvironment.value = ''
-  deployBuildVersionId.value = versionId || buildVersions.value.find(item => item.status === 'Succeeded')?.id
-  deployPlan.value = undefined
-}
-
-async function buildNow() {
-  building.value = true
+  releaseLoading.value = true
+  releaseBatch.value = undefined
+  releaseEnvironmentIds.value = []
   try {
-    const build = await applicationApi.build(projectId.value, Number(route.params.id))
-    buildVersions.value = [build, ...buildVersions.value]
-    ElMessage.success(`构建已提交：${build.version}`)
+    releaseBranches.value = await applicationApi.gitBranches(projectId.value, Number(route.params.id))
+    releaseBranch.value = releaseBranches.value.some(item => item.name === app.value?.branch)
+      ? app.value?.branch || releaseBranches.value[0]?.name || ''
+      : releaseBranches.value[0]?.name || ''
+    await loadReleaseCommits()
   } catch (error) {
     ElMessage.error((error as Error).message)
   } finally {
-    building.value = false
+    releaseLoading.value = false
   }
 }
 
-async function loadDeployPlan() {
-  if (!deployEnvironment.value || !deployBuildVersionId.value) {
-    deployPlan.value = undefined
-    return
-  }
-  loadingPlan.value = true
-  deployPlan.value = undefined
+async function loadReleaseCommits() {
+  if (!releaseBranch.value) return
+  releaseLoading.value = true
   try {
-    deployPlan.value = await applicationApi.deployPlan(projectId.value, Number(route.params.id), {
-      environment: deployEnvironment.value,
-      build_version_id: deployBuildVersionId.value,
-    })
+    releaseCommits.value = await applicationApi.gitCommits(projectId.value, Number(route.params.id), releaseBranch.value, 20)
+    releaseCommit.value = releaseCommits.value[0]?.sha || ''
   } catch (error) {
+    releaseCommits.value = []
+    releaseCommit.value = ''
     ElMessage.error((error as Error).message)
   } finally {
-    loadingPlan.value = false
+    releaseLoading.value = false
   }
 }
 
-async function confirmDeploy() {
-  if (!deployEnvironment.value || !deployBuildVersionId.value || !deployPlan.value?.can_deploy) return
+async function confirmReleaseBatch() {
+  if (!releaseBranch.value || !releaseCommit.value || !releaseEnvironmentIds.value.length) return
   deploying.value = true
   try {
-    const run = await applicationApi.deploy(projectId.value, Number(route.params.id), {
-      environment: deployEnvironment.value,
-      build_version_id: deployBuildVersionId.value,
+    releaseBatch.value = await applicationApi.createReleaseBatch(projectId.value, Number(route.params.id), {
+      branch: releaseBranch.value,
+      git_commit: releaseCommit.value,
+      environment_ids: releaseEnvironmentIds.value,
     })
     deployDialog.value = false
-    environment.value = deployEnvironment.value
-    if (run.approval_required) {
-      ElMessage.success('Production 发布审批已提交')
-      router.push(`/devcenter/projects/${projectId.value}/approvals`)
-    } else if (run.pipeline_run_name) {
-      ElMessage.success('PipelineRun 已启动')
-      router.push(`/devcenter/projects/${projectId.value}/pipelines/${run.pipeline_run_name}`)
-    }
+    ElMessage.success(`发布批次已创建：${releaseBranch.value} · ${releaseCommit.value.slice(0, 8)}`)
+    await load()
   } catch (error) {
     ElMessage.error((error as Error).message)
   } finally {
     deploying.value = false
   }
-}
-
-function riskLabel(level: DeploymentPlan['risk_level']) {
-  return {
-    low: 'Low risk',
-    medium: 'Needs attention',
-    high: 'High risk / gated',
-  }[level]
 }
 
 async function rollback(release: Release) {
@@ -369,11 +398,29 @@ onMounted(load)
 }
 
 .page-content :deep(.page-header) {
-  margin-bottom: 14px;
+  gap: 14px;
+  margin-bottom: 10px;
 }
 
 .page-content :deep(.page-header h1) {
-  font-size: 28px;
+  font-size: 25px;
+}
+
+.page-content :deep(.page-header .eyebrow) {
+  min-height: 24px;
+  padding: 0 10px;
+  margin-bottom: 7px;
+  font-size: 11px;
+}
+
+.page-content :deep(.page-header p) {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.page-content :deep(.page-header .page-actions) {
+  gap: 8px;
 }
 
 .app-avatar {
@@ -390,11 +437,299 @@ onMounted(load)
 }
 
 .application-summary {
+  padding: 16px;
+}
+
+.release-flow {
   display: grid;
-  grid-template-columns: minmax(260px, 1.5fr) repeat(4, minmax(120px, 1fr));
-  align-items: center;
   gap: 16px;
-  padding: 14px 18px;
+}
+
+.release-step {
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.release-step label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.release-step :deep(.el-select) {
+  --el-border-color: #d8e0eb;
+  --el-border-color-hover: #93b4f8;
+  --el-text-color-regular: #172033;
+}
+
+.release-environments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.release-environments :deep(.el-checkbox) {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  margin-right: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.commit-option {
+  display: grid;
+  gap: 3px;
+  line-height: 1.35;
+}
+
+.commit-option b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-option small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.release-batch-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.release-batch-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.release-batch-item b,
+.release-batch-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-batch-item small,
+.release-target-count {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.release-target-list {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.release-target-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.release-target-name {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.release-target-name small,
+.release-target-note {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.release-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.summary-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.summary-context strong,
+.summary-context span {
+  display: block;
+}
+
+.summary-context strong {
+  color: var(--text-1);
+  font-size: 15px;
+}
+
+.summary-context span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.environment-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.environment-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.environment-summary-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(130px, 1.1fr) minmax(120px, 1fr) minmax(150px, 1.2fr) minmax(130px, 1fr);
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  background: var(--surface-soft);
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.environment-summary-card > * {
+  min-width: 0;
+}
+
+.environment-summary-card:hover,
+.environment-summary-card.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+.environment-summary-card header,
+.environment-summary-status,
+.environment-summary-field {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.environment-summary-card header {
+  justify-content: flex-start;
+}
+
+.environment-summary-card header strong,
+.environment-summary-status span,
+.environment-summary-field span,
+.environment-summary-field b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.environment-summary-card header strong {
+  font-size: 15px;
+}
+
+.environment-summary-status span,
+.environment-summary-field span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.environment-summary-field {
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--border-soft);
+}
+
+.environment-summary-field b {
+  max-width: 100%;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .release-environments {
+    grid-template-columns: 1fr;
+  }
+
+  .build-version-item {
+    grid-template-columns: 1fr auto;
+  }
+
+  .build-version-item > :deep(.status-badge) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .build-version-item > :deep(.el-button) {
+    justify-self: start;
+  }
+
+  .build-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .environment-summary-card {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .release-batch-item {
+    grid-template-columns: 1fr auto;
+  }
+
+  .release-target-count {
+    grid-column: 1 / -1;
+    margin-top: 0;
+  }
+
+  .environment-summary-field {
+    padding: 10px 0 0;
+    border-top: 1px solid var(--border-soft);
+    border-left: 0;
+  }
+}
+
+.environment-summary-empty {
+  padding: 22px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
 }
 
 .summary-identity,
@@ -420,24 +755,167 @@ onMounted(load)
   font-size: 12px;
 }
 
-.summary-stat {
-  min-width: 0;
-  padding-left: 14px;
-  border-left: 1px solid var(--border-soft);
-}
-
-.summary-stat strong {
-  display: block;
-  margin-top: 6px;
-  overflow: hidden;
-  color: var(--text-2);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.environment-config-drawer :deep(.el-drawer) {
+  background: #f6f8fb;
+  color: #172033;
+}
+
+:global(.environment-config-drawer.el-drawer) {
+  background: #f6f8fb !important;
+  color: #172033 !important;
+}
+
+:global(.environment-config-drawer.el-drawer .el-drawer__body) {
+  background: #f6f8fb !important;
+}
+
+.environment-config-drawer :deep(.el-drawer__header) {
+  margin-bottom: 0;
+  padding: 20px 28px;
+  border-bottom: 1px solid #e5eaf2;
+  background: #fff;
+}
+
+.environment-config-drawer :deep(.el-drawer__title) {
+  color: #172033;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.environment-config-drawer :deep(.el-drawer__close) {
+  color: #7b879b;
+}
+
+.environment-config-drawer :deep(.el-drawer__body) {
+  padding: 0;
+  overflow-x: hidden;
+}
+
+.environment-config-drawer :deep(.page-stack) {
+  gap: 14px;
+  padding: 22px 28px 28px;
+}
+
+.environment-config-drawer :deep(.section-head) {
+  align-items: flex-start;
+  padding-bottom: 4px;
+}
+
+.environment-config-drawer :deep(.section-head h3) {
+  margin-bottom: 6px;
+  color: #172033;
+  font-size: 20px;
+}
+
+.environment-config-drawer :deep(.section-head p) {
+  max-width: 520px;
+  color: #738097;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.environment-config-drawer :deep(.config-tabs) {
+  margin: 0 -4px;
+}
+
+.environment-config-drawer :deep(.config-tabs .el-tabs__item) {
+  color: #718097;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.environment-config-drawer :deep(.config-tabs .el-tabs__item.is-active) {
+  color: #2563eb;
+}
+
+:global(.environment-config-drawer .config-tabs .el-tabs__item) {
+  color: #53627a !important;
+}
+
+:global(.environment-config-drawer .config-tabs .el-tabs__item.is-active) {
+  color: #2563eb !important;
+}
+
+:global(.environment-config-drawer .config-tabs .el-tabs__item.is-disabled) {
+  color: #aeb8c7 !important;
+  cursor: not-allowed;
+  opacity: .75;
+}
+
+.environment-config-drawer :deep(.list-card),
+.environment-config-drawer :deep(.redeploy-card) {
+  border: 1px solid #e5eaf2;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.environment-config-drawer :deep(.list-card .surface-header) {
+  padding: 16px 20px;
+}
+
+.environment-config-drawer :deep(.list-card .surface-header h3) {
+  color: #172033;
+  font-size: 16px;
+}
+
+.environment-config-drawer :deep(.list-card .surface-header p) {
+  color: #8490a3;
+  font-size: 12px;
+}
+
+.environment-config-drawer :deep(.config-list) {
+  padding: 12px 16px 16px;
+}
+
+.environment-config-drawer :deep(.config-card) {
+  padding: 14px;
+  border-color: #e5eaf2;
+  background: #f8fafc;
+}
+
+.environment-config-drawer :deep(.config-head h4) {
+  color: #172033;
+  font-size: 15px;
+}
+
+.environment-config-drawer :deep(.empty) {
+  min-height: 180px;
+  padding: 24px;
+  border: 0;
+  border-radius: 0 0 14px 14px;
+  background: #fff;
+}
+
+.environment-config-drawer :deep(.empty > span) {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 18px;
+}
+
+.environment-config-drawer :deep(.empty h3) {
+  margin: 12px 0 6px;
+  color: #172033;
+  font-size: 16px;
+}
+
+.environment-config-drawer :deep(.empty p) {
+  color: #8490a3;
+  font-size: 12px;
+}
+
+.environment-config-drawer :deep(.redeploy-card) {
+  padding: 14px 16px;
+}
+
+@media (max-width: 900px) {
+  .environment-config-drawer :deep(.el-drawer) {
+    width: 100% !important;
+  }
 }
 
 .pipeline-panel,
@@ -476,7 +954,10 @@ onMounted(load)
 }
 
 .build-version-item {
-  min-height: 52px;
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px 128px 110px;
+  align-items: center;
   padding: 8px 10px;
   border-radius: 9px;
 }
@@ -487,7 +968,17 @@ onMounted(load)
 
 .build-version-item > div {
   min-width: 0;
-  flex: 1;
+}
+
+.build-version-item > :deep(.el-tag),
+.build-version-item > :deep(.status-badge) {
+  justify-self: center;
+}
+
+.build-version-item > :deep(.el-button) {
+  justify-self: end;
+  padding: 6px 4px;
+  white-space: nowrap;
 }
 
 .build-version-item b,
@@ -499,10 +990,37 @@ onMounted(load)
   color: var(--danger);
 }
 
+.build-version-item small.build-delivery-summary {
+  color: var(--primary);
+  font-weight: 700;
+}
+
 .build-version-item b {
   color: var(--text-2);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
+}
+
+.build-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 18px;
+  margin-top: 7px;
+}
+
+.build-info-grid span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-info-grid i {
+  margin-right: 6px;
+  color: var(--subtle);
+  font-style: normal;
 }
 
 .build-version-item small {
@@ -785,16 +1303,6 @@ onMounted(load)
 }
 
 @media (max-width: 1100px) {
-  .application-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .summary-stat {
-    padding: 10px 0 0;
-    border-left: 0;
-    border-top: 1px solid var(--border-soft);
-  }
-
   .deploy-target-grid {
     grid-template-columns: 1fr;
   }

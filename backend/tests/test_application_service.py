@@ -38,7 +38,7 @@ class ApplicationServiceTest(unittest.TestCase):
         self.context.pop()
 
     @patch("app.services.application_service.RepoAnalyzerService.analyze")
-    def test_create_generates_application_spec_and_default_environments(self, analyze):
+    def test_create_generates_application_spec_without_default_environments(self, analyze):
         analyze.return_value = {
             "language": "nodejs",
             "framework": "vite",
@@ -56,7 +56,7 @@ class ApplicationServiceTest(unittest.TestCase):
         self.assertEqual(app.application_spec["spec"]["runtime"]["framework"], "vite")
         self.assertIsNone(app.application_spec["spec"]["build"]["image"])
         environments = ApplicationEnvironment.query.filter_by(application_id=app.id).all()
-        self.assertEqual([item.environment_name for item in environments], ["dev"])
+        self.assertEqual(environments, [])
 
     def test_create_rejects_duplicate_application_name(self):
         db.session.add(Application(

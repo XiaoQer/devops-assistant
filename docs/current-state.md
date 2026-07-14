@@ -38,12 +38,16 @@
   并拒绝 `exec` 认证、本地凭据文件引用、非 HTTPS Server 和超过 1 MiB 的配置。
 - 基于代码仓库创建应用，并分析 Java、Node.js 或 Dockerfile 项目。
 - 应用环境和配置的增删改查、克隆、比较与导出。
+- Application Environment 配置中心支持按环境管理环境变量、ConfigMap、Secret、资源参数
+  和 Ingress；配置值加密保存并在目标环境发布时物化为 Kubernetes 配置资源和工作负载参数。
 - 部署计划、Tekton PipelineRun 创建、重试、结构化状态和日志。
 - Application 构建版本与 Build once/Promote 流程：Build Pipeline 只构建并推送镜像，发布使用已成功构建版本执行 Deploy-only Pipeline；同一构建版本可连续发布到多个环境，生产发布审批关联具体构建版本。
+- Application 发布批次支持从公共 Git 仓库切换分支，读取最近 20 条提交，选择一个提交并多选环境；一次 Build Pipeline 产出构建版本，Delivery Reconciler 按环境 fan-out Deploy-only PipelineRun，复用同一镜像并独立记录环境状态，生产环境审批只阻断对应目标。
 - 发布历史、回滚流程和交付状态同步。
-- Application Environment 已解析为 Project 交付上下文：已绑定且连接成功的 Kubernetes
-  集群作为唯一目标客户端，Project 默认且连接成功的 Registry 作为构建镜像地址；未测试、
-  失败、停用或跨 Project 的上下文会在发布计划和审批执行时阻断。
+- Application Environment 已解析为 Project 交付上下文：环境由用户在 Application 工作区
+  中显式创建、编辑和删除，不再自动补建 dev；已绑定且连接成功的 Kubernetes 集群作为唯一
+  目标客户端，Project 默认且连接成功的 Registry 作为构建镜像地址；未测试、失败、停用或
+  跨 Project 的上下文会在发布计划和审批执行时阻断。
 - 第一阶段中央 Tekton 构建并部署：目标 kubeconfig 以 Project/Cluster 确定性命名 Secret
   幂等物化到中央 Tekton Namespace，只有 deploy Task 以只读方式挂载并显式指定 kubeconfig
   路径和 context；目标配置写入目标集群，中央集群只保存 Tekton 与构建 Registry Secret。
@@ -113,5 +117,5 @@
 
 ## 下一个 Harness 里程碑
 
-实现 Delivery Reconciler：中央 Tekton 只负责构建和推送，Reconciler 监听构建结果后通过
-目标集群客户端部署，并逐步移除中央集群中的持久 kubeconfig Secret。
+完善 Delivery Reconciler 的后台调度与重试：当前已提供按发布批次触发的协调逻辑，后续接入
+常驻 worker/定时任务，继续逐步移除中央集群中的持久 kubeconfig Secret。

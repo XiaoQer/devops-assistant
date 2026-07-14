@@ -9,6 +9,12 @@ export const pipelineApi = {
     }>(`/projects/${projectId}/pipelines`, { params }),
   status: (projectId: number, name: string) =>
     client.get(`/projects/${projectId}/pipelines/${name}/status`),
+  flow: (projectId: number, name: string) =>
+    client.get<never, {
+      current_run: string
+      build?: import('../types').BuildVersion
+      batch?: import('../types').ReleaseBatch
+    }>(`/projects/${projectId}/pipelines/${name}/flow`),
   logs: (projectId: number, name: string) =>
     client.get<never, {
       pipeline_run: string

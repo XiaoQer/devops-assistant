@@ -1,4 +1,15 @@
-import type { BuildVersion, PipelineLogDetails } from '../../types'
+import type { BuildVersion, PipelineLogDetails, ReleaseBatch } from '../../types'
+
+export interface ExecutionStepDetail {
+  id: string
+  taskName: string
+  name: string
+  label: string
+  status: string
+  startedAt?: string
+  finishedAt?: string
+  logs: string
+}
 
 export interface BuildStepDetail {
   id: 'clone' | 'build' | 'push'
@@ -84,6 +95,42 @@ export function normalizeBuildSteps(details: PipelineLogDetails, buildType?: str
     finishedAt: source.task.finished_at,
     logs: source.step.logs,
   }] : [])
+}
+
+export function normalizeExecutionSteps(details: PipelineLogDetails): ExecutionStepDetail[] {
+  return details.tasks.flatMap(task => task.steps.map((step, index) => ({
+    id: `${task.name}:${step.step}:${index}`,
+    taskName: task.task_name,
+    name: step.step,
+    label: `${task.task_name} / ${step.step}`,
+    status: task.status,
+    startedAt: task.started_at,
+    finishedAt: task.finished_at,
+    logs: step.logs,
+  })))
+}
+
+const activeStatuses = new Set([
+  'Pending', 'Running', 'Building', 'Deploying', 'WaitingApproval', 'WaitingBuild',
+])
+
+export function defaultExecutionStepId(steps: ExecutionStepDetail[]) {
+  return steps.find(step => step.status === 'Failed')?.id
+    || steps.find(step => activeStatuses.has(step.status))?.id
+    || steps[0]?.id
+}
+
+export function batchForBuild(batches: ReleaseBatch[], buildId?: number) {
+  return buildId === undefined
+    ? undefined
+    : batches.find(batch => batch.build_version_id === buildId)
+}
+
+export function hasActiveDelivery(build?: BuildVersion, batch?: ReleaseBatch) {
+  if (build && activeStatuses.has(build.status)) return true
+  if (!batch) return false
+  return activeStatuses.has(batch.status)
+    || batch.targets.some(target => activeStatuses.has(target.status))
 }
 
 export function defaultStepId(steps: BuildStepDetail[]) {

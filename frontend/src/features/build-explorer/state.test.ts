@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { BuildVersion, PipelineLogDetails } from '../../types'
+import type { BuildVersion, PipelineLogDetails, ReleaseBatch } from '../../types'
 import {
   buildExplorerPath,
   canRefreshHistory,
   createRequestGate,
-  defaultStepId,
+  batchForBuild,
+  defaultExecutionStepId,
   explorerContentState,
-  normalizeBuildSteps,
+  hasActiveDelivery,
+  normalizeExecutionSteps,
   selectRequestedBuild,
   shouldPollBuild,
 } from './state'
@@ -79,13 +81,15 @@ describe('build explorer state', () => {
     })
   })
 
-  it('maps Java clone, Maven package and Kaniko image push', () => {
-    const steps = normalizeBuildSteps(javaLogDetails, 'maven')
-    expect(steps.map(step => step.id)).toEqual(['clone', 'build', 'push'])
+  it('preserves Java Task and Step names in execution order', () => {
+    const steps = normalizeExecutionSteps(javaLogDetails)
+    expect(steps.map(step => `${step.taskName}/${step.name}`)).toEqual([
+      'clone/git-clone', 'package/maven', 'build-image/kaniko',
+    ])
     expect(steps.map(step => step.logs)).toEqual(['clone logs', 'maven logs', 'kaniko logs'])
   })
 
-  it('maps Node npm as build even when its task is clone-and-test', () => {
+  it('preserves Node npm as an actual step inside clone-and-test', () => {
     const details: PipelineLogDetails = {
       ...javaLogDetails,
       tasks: [
@@ -102,19 +106,19 @@ describe('build explorer state', () => {
         },
       ],
     }
-    const steps = normalizeBuildSteps(details, 'npm')
+    const steps = normalizeExecutionSteps(details)
+    expect(steps.map(step => step.name)).toEqual(['git-clone', 'npm', 'kaniko'])
     expect(steps.map(step => step.logs)).toEqual(['clone logs', 'npm logs', 'kaniko logs'])
   })
 
-  it('represents Dockerfile Kaniko as both image build and push', () => {
+  it('does not invent a separate push step for Dockerfile Kaniko', () => {
     const details: PipelineLogDetails = {
       ...javaLogDetails,
       tasks: [javaLogDetails.tasks[0], javaLogDetails.tasks[2]],
     }
-    const steps = normalizeBuildSteps(details, 'dockerfile')
-    expect(steps.map(step => step.id)).toEqual(['clone', 'build', 'push'])
+    const steps = normalizeExecutionSteps(details)
+    expect(steps.map(step => step.name)).toEqual(['git-clone', 'kaniko'])
     expect(steps[1].logs).toBe('kaniko logs')
-    expect(steps[2].logs).toBe('kaniko logs')
   })
 
   it('shows invalid deep-link state before an existing history list', () => {
@@ -138,11 +142,36 @@ describe('build explorer state', () => {
     expect(canRefreshHistory(false, 42)).toBe(true)
   })
 
-  it('selects the first failed step before build', () => {
-    expect(defaultStepId([
-      { id: 'clone', label: 'Clone', status: 'Succeeded', logs: '' },
-      { id: 'build', label: 'Build', status: 'Failed', logs: 'failed' },
-    ])).toBe('build')
+  it('selects failed, then active, then first execution step', () => {
+    const steps = normalizeExecutionSteps(javaLogDetails)
+    expect(defaultExecutionStepId([
+      { ...steps[0], status: 'Succeeded' },
+      { ...steps[1], status: 'Running' },
+    ])).toBe(steps[1].id)
+    expect(defaultExecutionStepId([
+      { ...steps[0], status: 'Failed' },
+      { ...steps[1], status: 'Running' },
+    ])).toBe(steps[0].id)
+    expect(defaultExecutionStepId(steps)).toBe(steps[0].id)
+  })
+
+  it('associates a release batch with its exact build version', () => {
+    const batches = [
+      { id: 1, build_version_id: 41 },
+      { id: 2, build_version_id: 42 },
+    ] as ReleaseBatch[]
+    expect(batchForBuild(batches, 42)?.id).toBe(2)
+  })
+
+  it('keeps polling while any environment target is active', () => {
+    const batch = {
+      id: 2,
+      build_version_id: 42,
+      status: 'Deploying',
+      targets: [{ id: 7, status: 'Deploying' }],
+    } as ReleaseBatch
+    expect(hasActiveDelivery(build(42), batch)).toBe(true)
+    expect(hasActiveDelivery(build(42), { ...batch, status: 'Succeeded', targets: [{ id: 7, status: 'Succeeded' }] } as ReleaseBatch)).toBe(false)
   })
 
   it('polls only non-terminal build states', () => {

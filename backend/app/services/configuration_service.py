@@ -7,6 +7,7 @@ from flask import current_app
 from app.extensions import db
 from app.models import ApplicationConfig, ApplicationEnvironment
 from app.utils.errors import ApiError
+from .registry_service import RegistryService
 
 
 class ConfigurationService:
@@ -120,7 +121,6 @@ class ConfigurationService:
         registry_secret_name = None
         global_credentials = None
         if registry:
-            from .registry_service import RegistryService
             global_credentials = RegistryService().credentials(registry)
         legacy_registry = grouped.get("registry_secret", {})
         required = {"REGISTRY_SERVER", "REGISTRY_USERNAME", "REGISTRY_PASSWORD"}
@@ -133,25 +133,40 @@ class ConfigurationService:
                 "secret_name": f"{app.name}-registry",
             }
             registry_secret_name = credentials["secret_name"]
-            # Kaniko runs in Tekton namespace; deployed Pods run in target namespace.
-            for namespace in {
+            kubernetes_service.apply_registry_secret(
+                registry_secret_name,
                 environment.namespace,
-                current_app.config["TEKTON_NAMESPACE"],
-            }:
-                kubernetes_service.ensure_namespace(namespace)
-                kubernetes_service.apply_registry_secret(
-                    registry_secret_name,
-                    namespace,
-                    credentials["server"],
-                    credentials["username"],
-                    credentials["password"],
-                    credentials.get("email", ""),
-                )
+                credentials["server"],
+                credentials["username"],
+                credentials["password"],
+                credentials.get("email", ""),
+            )
         return {
             "config_map_name": config_map_name,
             "secret_name": secret_name,
             "registry_secret_name": registry_secret_name,
         }
+
+    def materialize_build_registry(
+        self, registry, central_kubernetes, tekton_namespace
+    ):
+        credentials = RegistryService().credentials(registry)
+        if not credentials:
+            raise ApiError(
+                "Registry 凭据不可用",
+                409,
+                "REGISTRY_CREDENTIALS_REQUIRED",
+            )
+        central_kubernetes.ensure_namespace(tekton_namespace)
+        central_kubernetes.apply_registry_secret(
+            credentials["secret_name"],
+            tekton_namespace,
+            credentials["server"],
+            credentials["username"],
+            credentials["password"],
+            credentials.get("email", ""),
+        )
+        return credentials["secret_name"]
 
     def _fernet(self):
         digest = hashlib.sha256(current_app.config["SECRET_KEY"].encode()).digest()

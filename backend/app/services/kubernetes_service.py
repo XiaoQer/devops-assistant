@@ -88,11 +88,17 @@ class KubernetesService:
             self.core_api.create_namespaced_config_map(namespace, body)
         return name
 
-    def apply_secret(self, name, namespace, data, secret_type="Opaque"):
+    def apply_secret(
+        self, name, namespace, data, secret_type="Opaque", labels=None
+    ):
+        secret_labels = {
+            "app.kubernetes.io/managed-by": "aegis",
+            **(labels or {}),
+        }
         body = client.V1Secret(
             metadata=client.V1ObjectMeta(
                 name=name,
-                labels={"app.kubernetes.io/managed-by": "aegis"},
+                labels=secret_labels,
             ),
             type=secret_type,
             string_data=data,
@@ -113,6 +119,13 @@ class KubernetesService:
                 raise
             self.core_api.create_namespaced_secret(namespace, body)
         return name
+
+    def delete_secret(self, name, namespace):
+        try:
+            self.core_api.delete_namespaced_secret(name, namespace)
+        except client.ApiException as exc:
+            if exc.status != 404:
+                raise
 
     def apply_registry_secret(
         self, name, namespace, server, username, password, email=""

@@ -97,7 +97,29 @@ class KubernetesClusterService:
         db.session.commit()
         return cluster
 
-    def delete(self, cluster):
+    def delete(self, cluster, central_kubernetes=None):
+        if cluster.environments:
+            raise ApiError(
+                "集群仍被应用环境使用，无法删除",
+                409,
+                "CLUSTER_IN_USE",
+            )
+
+        from .cluster_credential_materializer import ClusterCredentialMaterializer
+
+        try:
+            central = central_kubernetes or KubernetesService()
+            ClusterCredentialMaterializer().delete(
+                cluster.project, cluster, central
+            )
+        except Exception as exc:
+            db.session.rollback()
+            raise ApiError(
+                "中央集群凭据清理失败，请稍后重试",
+                502,
+                "CLUSTER_CREDENTIAL_CLEANUP_FAILED",
+            ) from exc
+
         was_default = cluster.is_default
         project_id = cluster.project_id
         db.session.delete(cluster)

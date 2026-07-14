@@ -7,7 +7,13 @@ from kubernetes.client.exceptions import ApiException
 
 from app import create_app
 from app.extensions import db
-from app.models import KubernetesCluster, Project
+from app.models import (
+    Application,
+    ApplicationEnvironment,
+    KubernetesCluster,
+    Project,
+)
+from app.services.cluster_credential_materializer import ClusterCredentialMaterializer
 from app.services.kubernetes_cluster_service import KubernetesClusterService
 from app.services.kubernetes_service import KubernetesService
 from app.utils.errors import ApiError
@@ -230,6 +236,59 @@ class KubernetesClusterServiceTest(unittest.TestCase):
         document, context = from_kubeconfig.call_args.args
         self.assertEqual(document["current-context"], "dev")
         self.assertEqual(context, "dev")
+
+    @patch.object(ClusterCredentialMaterializer, "delete")
+    def test_delete_rejects_cluster_bound_to_environment_before_cleanup(
+        self, cleanup
+    ):
+        cluster = self.service.create(self.project, self.payload())
+        application = Application(
+            project_id=self.project.id,
+            name="payments-api",
+            repo_url="https://example.test/payments.git",
+        )
+        db.session.add(application)
+        db.session.flush()
+        db.session.add(
+            ApplicationEnvironment(
+                application_id=application.id,
+                kubernetes_cluster_id=cluster.id,
+                environment_name="production",
+                namespace="payments-prod",
+            )
+        )
+        db.session.commit()
+
+        with self.assertRaises(ApiError) as raised:
+            self.service.delete(cluster, Mock())
+
+        self.assertEqual(raised.exception.code, "CLUSTER_IN_USE")
+        cleanup.assert_not_called()
+        self.assertIsNotNone(db.session.get(KubernetesCluster, cluster.id))
+
+    @patch.object(ClusterCredentialMaterializer, "delete")
+    def test_delete_cleans_central_secret_before_database_record(self, cleanup):
+        cluster = self.service.create(self.project, self.payload())
+        cluster_id = cluster.id
+        central = Mock()
+
+        self.service.delete(cluster, central)
+
+        cleanup.assert_called_once_with(self.project, cluster, central)
+        self.assertIsNone(db.session.get(KubernetesCluster, cluster_id))
+
+    @patch.object(ClusterCredentialMaterializer, "delete")
+    def test_delete_cleanup_failure_is_sanitized_and_preserves_record(self, cleanup):
+        cluster = self.service.create(self.project, self.payload())
+        cluster_id = cluster.id
+        cleanup.side_effect = RuntimeError("leaked central endpoint and credentials")
+
+        with self.assertRaises(ApiError) as raised:
+            self.service.delete(cluster, Mock())
+
+        self.assertEqual(raised.exception.code, "CLUSTER_CREDENTIAL_CLEANUP_FAILED")
+        self.assertNotIn("leaked", raised.exception.message)
+        self.assertIsNotNone(db.session.get(KubernetesCluster, cluster_id))
 
 
 class KubernetesServiceKubeconfigTest(unittest.TestCase):

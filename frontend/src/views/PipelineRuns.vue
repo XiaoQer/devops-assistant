@@ -91,13 +91,13 @@
               >
                 重试
               </el-button>
-              <el-tooltip content="查看 Application 详情" placement="top">
+              <el-tooltip content="查看构建历史" placement="top">
                 <el-button
                   class="compact-action"
                   circle
-                  aria-label="查看 Application 详情"
+                  aria-label="查看构建历史"
                   :icon="View"
-                  @click="openApplication(item)"
+                  @click="openBuildHistory(item)"
                 />
               </el-tooltip>
             </div>
@@ -160,6 +160,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Tools, View } from '@element-plus/icons-vue'
 import { pipelineApi } from '../api/pipeline'
+import { buildExplorerPath } from '../features/build-explorer/state'
 import PageHeader from '../components/common/PageHeader.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import EmptyState from '../components/common/EmptyState.vue'
@@ -227,8 +228,8 @@ function handleSubmitted() {
   void loadWorkbench()
 }
 
-function openApplication(item: CicdWorkbenchItem) {
-  router.push(`/devcenter/projects/${projectId}/applications/${item.application.id}`)
+function openBuildHistory(item: CicdWorkbenchItem) {
+  router.push(buildExplorerPath(projectId, item.application.id, item.latest_build?.id))
 }
 
 function openPipeline(item: CicdWorkbenchItem) {

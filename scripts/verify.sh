@@ -21,6 +21,9 @@ echo "Running backend tests"
   "$PYTHON" -m pytest tests -q
 )
 
+echo "Running frontend tests"
+npm --prefix "$ROOT_DIR/frontend" test
+
 echo "Building frontend"
 npm --prefix "$ROOT_DIR/frontend" run build
 

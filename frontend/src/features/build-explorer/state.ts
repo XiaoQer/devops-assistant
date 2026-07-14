@@ -9,8 +9,9 @@ export interface BuildStepDetail {
   logs: string
 }
 
-export function buildExplorerPath(projectId: number, applicationId: number, buildId: number) {
-  return `/devcenter/projects/${projectId}/pipelines/applications/${applicationId}/builds/${buildId}`
+export function buildExplorerPath(projectId: number, applicationId: number, buildId?: number) {
+  const base = `/devcenter/projects/${projectId}/pipelines/applications/${applicationId}/builds`
+  return buildId === undefined ? base : `${base}/${buildId}`
 }
 
 export function selectRequestedBuild(builds: BuildVersion[], requestedId?: number) {
@@ -21,34 +22,68 @@ export function selectRequestedBuild(builds: BuildVersion[], requestedId?: numbe
   return { build, invalidRequestedId: !build }
 }
 
-function stepKind(value: string): BuildStepDetail['id'] | undefined {
-  const normalized = value.toLowerCase()
-  if (normalized.includes('clone') || normalized.includes('git')) return 'clone'
-  if (normalized.includes('push') && !normalized.includes('build')) return 'push'
-  if (normalized.includes('build') || normalized.includes('kaniko')) return 'build'
+export function createRequestGate() {
+  let generation = 0
+  return {
+    next: () => ++generation,
+    isCurrent: (value: number) => value === generation,
+  }
+}
+
+export function canRefreshHistory(loadingContext: boolean, buildId?: number): buildId is number {
+  return !loadingContext && buildId !== undefined
+}
+
+export function explorerContentState(
+  builds: BuildVersion[],
+  invalidRequestedId: boolean,
+  loading: boolean,
+  hasError = false,
+): 'loading' | 'error' | 'invalid' | 'history' | 'empty' {
+  if (loading) return 'loading'
+  if (hasError) return 'error'
+  if (invalidRequestedId) return 'invalid'
+  return builds.length ? 'history' : 'empty'
+}
+
+function findStep(
+  details: PipelineLogDetails,
+  matches: (taskName: string, stepName: string) => boolean,
+) {
+  for (const task of details.tasks) {
+    const taskName = task.task_name.toLowerCase()
+    for (const step of task.steps) {
+      const stepName = `${step.step} ${step.container}`.toLowerCase()
+      if (matches(taskName, stepName)) return { task, step }
+    }
+  }
   return undefined
 }
 
-export function normalizeBuildSteps(details: PipelineLogDetails): BuildStepDetail[] {
-  const found = new Map<BuildStepDetail['id'], BuildStepDetail>()
-  for (const task of details.tasks) {
-    for (const step of task.steps) {
-      const id = stepKind(`${step.step} ${step.container}`) || stepKind(task.task_name)
-      if (!id || found.has(id)) continue
-      const labels = { clone: 'Clone', build: 'Build', push: 'Push' } as const
-      found.set(id, {
-        id,
-        label: labels[id],
-        status: task.status,
-        startedAt: task.started_at,
-        finishedAt: task.finished_at,
-        logs: step.logs,
-      })
-    }
-  }
-  return (['clone', 'build', 'push'] as const)
-    .map(id => found.get(id))
-    .filter((step): step is BuildStepDetail => Boolean(step))
+export function normalizeBuildSteps(details: PipelineLogDetails, buildType?: string): BuildStepDetail[] {
+  const clone = findStep(details, (_task, step) => step.includes('git-clone'))
+  const packageBuild = findStep(details, (task, step) => (
+    task === 'package'
+    || step.includes('maven')
+    || step.includes('npm')
+  ))
+  const kaniko = findStep(details, (task, step) => (
+    task === 'build-image' || step.includes('kaniko')
+  ))
+  const build = buildType?.toLowerCase() === 'dockerfile' ? kaniko : (packageBuild || kaniko)
+  const sources = [
+    { id: 'clone', label: 'Clone', source: clone },
+    { id: 'build', label: 'Build', source: build },
+    { id: 'push', label: 'Push', source: kaniko },
+  ] as const
+  return sources.flatMap(({ id, label, source }) => source ? [{
+    id,
+    label,
+    status: source.task.status,
+    startedAt: source.task.started_at,
+    finishedAt: source.task.finished_at,
+    logs: source.step.logs,
+  }] : [])
 }
 
 export function defaultStepId(steps: BuildStepDetail[]) {

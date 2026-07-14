@@ -9,7 +9,22 @@
       <el-button :loading="loadingContext || loadingDetail" @click="refresh">刷新</el-button>
     </PageHeader>
 
-    <div v-if="builds.length" class="explorer-layout">
+    <section v-if="contentState === 'error'" class="surface explorer-empty">
+      <EmptyState title="构建历史加载失败" :description="contextError">
+        <el-button type="primary" @click="refresh">重新加载</el-button>
+      </EmptyState>
+    </section>
+
+    <section v-else-if="contentState === 'invalid'" class="surface explorer-empty">
+      <EmptyState
+        title="找不到这个构建版本"
+        description="该构建不存在，或不属于当前 Project 和 Application。"
+      >
+        <el-button type="primary" @click="openLatestBuild">查看最新构建</el-button>
+      </EmptyState>
+    </section>
+
+    <div v-else-if="contentState === 'history'" class="explorer-layout">
       <ApplicationBuildHistory
         :builds="builds"
         :selected-id="selectedBuild?.id"
@@ -28,28 +43,27 @@
       />
     </div>
 
-    <section v-else-if="invalidRequestedId && !loadingContext" class="surface explorer-empty">
+    <section v-else-if="contentState === 'empty'" class="surface explorer-empty">
       <EmptyState
-        title="找不到这个构建版本"
-        description="该构建不存在，或不属于当前 Project 和 Application。"
+        title="暂无构建版本"
+        description="发起第一次构建后，历史与步骤日志会显示在这里。"
       >
-        <el-button type="primary" @click="openLatestBuild">查看最新构建</el-button>
+        <el-button type="primary" @click="buildDrawer = true">发起构建</el-button>
       </EmptyState>
     </section>
 
-    <section v-else-if="!loadingContext" class="surface explorer-empty">
-      <EmptyState
-        title="暂无构建版本"
-        description="从 CI/CD 工作台发起第一次构建后，历史与步骤日志会显示在这里。"
-      >
-        <el-button type="primary" @click="backToWorkbench">返回工作台构建</el-button>
-      </EmptyState>
-    </section>
+    <QuickBuildDrawer
+      v-model="buildDrawer"
+      :project-id="projectId"
+      :application="application"
+      :environments="environments"
+      @submitted="handleBuildSubmitted"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { applicationApi } from '../api/application'
@@ -58,15 +72,19 @@ import PageHeader from '../components/common/PageHeader.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 import ApplicationBuildHistory from '../components/pipeline/ApplicationBuildHistory.vue'
 import ApplicationBuildDetail from '../components/pipeline/ApplicationBuildDetail.vue'
+import QuickBuildDrawer from '../components/pipeline/QuickBuildDrawer.vue'
 import {
   buildExplorerPath,
+  canRefreshHistory,
+  createRequestGate,
   defaultStepId,
+  explorerContentState,
   normalizeBuildSteps,
   selectRequestedBuild,
   shouldPollBuild,
   type BuildStepDetail,
 } from '../features/build-explorer/state'
-import type { Application, BuildVersion } from '../types'
+import type { Application, BuildVersion, CicdEnvironmentOption } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -74,14 +92,24 @@ const projectId = Number(route.params.projectId)
 const applicationId = Number(route.params.applicationId)
 const application = ref<Application>()
 const builds = ref<BuildVersion[]>([])
+const environments = ref<CicdEnvironmentOption[]>([])
 const selectedBuild = ref<BuildVersion>()
 const steps = ref<BuildStepDetail[]>([])
 const selectedStepId = ref<string>()
 const invalidRequestedId = ref(false)
+const contextError = ref('')
 const logsError = ref('')
 const loadingContext = ref(true)
 const loadingDetail = ref(false)
+const buildDrawer = ref(false)
 const detailPanel = ref<{ scrollIntoView: () => void }>()
+const contextGate = createRequestGate()
+const contentState = computed(() => explorerContentState(
+  builds.value,
+  invalidRequestedId.value,
+  loadingContext.value,
+  Boolean(contextError.value),
+))
 let requestGeneration = 0
 let refreshTimer: number | undefined
 
@@ -93,19 +121,33 @@ function requestedBuildId() {
 }
 
 async function loadContext() {
+  stopPolling()
+  const contextGeneration = contextGate.next()
   loadingContext.value = true
+  contextError.value = ''
   try {
-    const [applicationData, buildItems] = await Promise.all([
+    const [applicationData, buildItems, environmentItems] = await Promise.all([
       applicationApi.get(projectId, applicationId),
       applicationApi.buildVersions(projectId, applicationId),
+      applicationApi.environments(projectId, applicationId),
     ])
+    if (!contextGate.isCurrent(contextGeneration)) return
     application.value = applicationData
     builds.value = buildItems
+    environments.value = environmentItems.map(item => ({
+      id: item.id,
+      environment_name: item.environment_name,
+      display_name: item.display_name,
+      approval_required: item.approval_required,
+    }))
     await resolveRouteSelection()
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    if (contextGate.isCurrent(contextGeneration)) {
+      contextError.value = (error as Error).message
+      ElMessage.error(contextError.value)
+    }
   } finally {
-    loadingContext.value = false
+    if (contextGate.isCurrent(contextGeneration)) loadingContext.value = false
   }
 }
 
@@ -122,6 +164,7 @@ async function resolveRouteSelection() {
   }
   if (requestedId === undefined) {
     await router.replace(buildExplorerPath(projectId, applicationId, result.build.id))
+    await loadSelectedBuild(result.build.id)
     return
   }
   await loadSelectedBuild(result.build.id)
@@ -158,7 +201,7 @@ async function loadLogs(build: BuildVersion, generation: number) {
   try {
     const details = await pipelineApi.logs(projectId, build.pipeline_run_name)
     if (generation !== requestGeneration) return
-    steps.value = normalizeBuildSteps(details)
+    steps.value = normalizeBuildSteps(details, build.build_type)
     selectedStepId.value = defaultStepId(steps.value)
   } catch (error) {
     if (generation !== requestGeneration) return
@@ -178,12 +221,15 @@ function selectBuild(buildId: number) {
 
 async function refreshSelected() {
   const buildId = selectedBuild.value?.id
-  if (!buildId) return
+  if (!canRefreshHistory(loadingContext.value, buildId)) return
+  const contextGeneration = contextGate.next()
   try {
-    builds.value = await applicationApi.buildVersions(projectId, applicationId)
+    const buildItems = await applicationApi.buildVersions(projectId, applicationId)
+    if (!contextGate.isCurrent(contextGeneration)) return
+    builds.value = buildItems
     if (builds.value.some(item => item.id === buildId)) await loadSelectedBuild(buildId)
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    if (contextGate.isCurrent(contextGeneration)) ElMessage.error((error as Error).message)
   }
 }
 
@@ -198,7 +244,11 @@ function refresh() {
 function openLatestBuild() {
   const latest = builds.value[0]
   if (latest) void router.replace(buildExplorerPath(projectId, applicationId, latest.id))
-  else void router.replace(buildExplorerPath(projectId, applicationId, 0).replace('/0', ''))
+}
+
+function handleBuildSubmitted() {
+  buildDrawer.value = false
+  void router.replace(buildExplorerPath(projectId, applicationId)).then(() => loadContext())
 }
 
 function backToWorkbench() {
@@ -227,6 +277,7 @@ watch(() => route.params.buildId, () => {
 
 onMounted(() => void loadContext())
 onBeforeUnmount(() => {
+  contextGate.next()
   requestGeneration += 1
   stopPolling()
 })

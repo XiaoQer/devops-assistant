@@ -8,6 +8,8 @@ describe('PodOverview container-first layout contract', () => {
     expect(source).toContain('class="pod-facts"')
     expect(source).toContain('data-runtime-action="container-logs"')
     expect(source).toContain('data-runtime-action="container-terminal"')
+    expect(source).toContain(':icon="Monitor"')
+    expect(source).toContain('aria-label="打开终端"')
   })
 
   it('protects long container metadata from colliding with status and actions', () => {

@@ -12,7 +12,9 @@
             <div class="container-field container-started"><small>启动时间</small><span>{{ formatRuntimeTime(container.started_at) }}</span></div>
             <div class="container-actions">
               <el-button size="small" data-runtime-action="container-logs" @click="$emit('container-logs', container.name)">查看日志</el-button>
-              <el-button size="small" type="primary" plain data-runtime-action="container-terminal" @click="$emit('container-terminal', container.name)">打开终端</el-button>
+              <el-tooltip content="打开终端" placement="top">
+                <el-button size="small" type="primary" plain circle :icon="Monitor" aria-label="打开终端" data-runtime-action="container-terminal" @click="$emit('container-terminal', container.name)" />
+              </el-tooltip>
             </div>
             <p v-if="container.message" class="container-message">{{ container.message }}</p>
           </article>
@@ -53,6 +55,7 @@
 </template>
 <script setup lang="ts">
 import type { RuntimePodDetail } from '../../types'
+import { Monitor } from '@element-plus/icons-vue'
 import { containerStateLabel, formatRuntimeTime } from './pod-detail-view-model'
 defineProps<{ pod: RuntimePodDetail }>()
 defineEmits<{ 'container-logs': [name: string]; 'container-terminal': [name: string] }>()

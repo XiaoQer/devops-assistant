@@ -1,5 +1,5 @@
 import { client } from './client'
-import type { ProjectRuntimeOverview, RuntimeExecSession } from '../types'
+import type { RuntimeEnvironmentOption, RuntimeExecSession, RuntimeInventory } from '../types'
 
 
 const base = (projectId: number, applicationId: number, environment: string) => (
@@ -7,8 +7,16 @@ const base = (projectId: number, applicationId: number, environment: string) => 
 )
 
 export const runtimeApi = {
-  overview: (projectId: number) =>
-    client.get<never, ProjectRuntimeOverview>(`/projects/${projectId}/runtime`),
+  environments: (projectId: number) =>
+    client.get<never, RuntimeEnvironmentOption[]>(`/projects/${projectId}/runtime/environments`),
+  inventory: (projectId: number, params: {
+    environment: string
+    resource: 'deployments' | 'pods'
+    page: number
+    page_size: number
+    query?: string
+    status?: string
+  }) => client.get<never, RuntimeInventory>(`/projects/${projectId}/runtime`, { params }),
   deploymentYaml: (
     projectId: number, applicationId: number, environment: string, deployment: string,
   ) => client.get<Record<string, unknown>>(

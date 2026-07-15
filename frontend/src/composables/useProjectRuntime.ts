@@ -1,65 +1,73 @@
-import { computed, onScopeDispose, ref } from 'vue'
+import { onScopeDispose, ref, watch } from 'vue'
+import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { runtimeApi } from '../api/runtime'
-import type { ProjectRuntimeOverview } from '../types'
+import type { RuntimeEnvironmentOption, RuntimeInventory } from '../types'
 
-
-export function useProjectRuntime(projectId: number) {
-  const overview = ref<ProjectRuntimeOverview>()
+export function useProjectRuntime(projectId: number, route: RouteLocationNormalizedLoaded, router: Router) {
+  const environments = ref<RuntimeEnvironmentOption[]>([])
+  const inventory = ref<RuntimeInventory>()
+  const environment = ref(String(route.query.environment || ''))
+  const resource = ref<'deployments' | 'pods'>(route.query.resource === 'pods' ? 'pods' : 'deployments')
+  const query = ref(String(route.query.query || ''))
+  const status = ref(String(route.query.status || ''))
+  const page = ref(Math.max(1, Number(route.query.page) || 1))
+  const pageSize = ref([20, 50, 100].includes(Number(route.query.page_size)) ? Number(route.query.page_size) : 20)
   const loading = ref(false)
   const refreshError = ref('')
-  const query = ref('')
-  const environment = ref('')
-  const status = ref('')
   const autoRefresh = ref(true)
 
-  const filteredEnvironments = computed(() => {
-    const needle = query.value.trim().toLowerCase()
-    return (overview.value?.environments || []).flatMap(group => {
-      if (environment.value && group.name !== environment.value) return []
-      const applications = group.applications.filter(item => {
-        if (status.value && item.status !== status.value) return false
-        if (!needle) return true
-        const searchable = [
-          item.application_name,
-          item.namespace,
-          item.deployment?.name,
-          ...(item.deployment?.images || []),
-          ...item.pods.map(pod => `${pod.name} ${pod.node || ''}`),
-        ].join(' ').toLowerCase()
-        return searchable.includes(needle)
-      })
-      return applications.length ? [{ ...group, applications }] : []
-    })
-  })
+  function syncUrl() {
+    void router.replace({ query: {
+      environment: environment.value,
+      resource: resource.value,
+      ...(query.value ? { query: query.value } : {}),
+      ...(status.value ? { status: status.value } : {}),
+      ...(page.value > 1 ? { page: String(page.value) } : {}),
+      ...(pageSize.value !== 20 ? { page_size: String(pageSize.value) } : {}),
+    } })
+  }
+
+  async function loadEnvironments() {
+    environments.value = await runtimeApi.environments(projectId)
+    if (!environments.value.some(item => item.name === environment.value)) {
+      environment.value = environments.value[0]?.name || ''
+    }
+    syncUrl()
+  }
 
   async function refresh() {
+    if (!environment.value) return
     loading.value = true
     try {
-      overview.value = await runtimeApi.overview(projectId)
+      inventory.value = await runtimeApi.inventory(projectId, {
+        environment: environment.value, resource: resource.value, page: page.value,
+        page_size: pageSize.value, query: query.value || undefined, status: status.value || undefined,
+      })
       refreshError.value = ''
     } catch (error) {
       refreshError.value = error instanceof Error ? error.message : 'Runtime 刷新失败'
-    } finally {
-      loading.value = false
-    }
+    } finally { loading.value = false }
   }
 
+  async function initialize() { await loadEnvironments(); await refresh() }
+  function resetPageAndRefresh() {
+    if (page.value !== 1) {
+      page.value = 1
+      return
+    }
+    syncUrl()
+    void refresh()
+  }
+  watch([environment, resource, status, pageSize], resetPageAndRefresh)
+  watch(page, () => { syncUrl(); void refresh() })
+  let queryTimer: ReturnType<typeof setTimeout> | undefined
+  watch(query, () => {
+    clearTimeout(queryTimer)
+    queryTimer = setTimeout(resetPageAndRefresh, 300)
+  })
   const timer = setInterval(() => {
-    if (autoRefresh.value && (typeof document === 'undefined' || !document.hidden)) {
-      void refresh()
-    }
+    if (autoRefresh.value && (typeof document === 'undefined' || !document.hidden)) void refresh()
   }, 30_000)
-  onScopeDispose(() => clearInterval(timer))
-
-  return {
-    overview,
-    loading,
-    refreshError,
-    query,
-    environment,
-    status,
-    autoRefresh,
-    filteredEnvironments,
-    refresh,
-  }
+  onScopeDispose(() => { clearInterval(timer); clearTimeout(queryTimer) })
+  return { environments, inventory, environment, resource, query, status, page, pageSize, loading, refreshError, autoRefresh, initialize, refresh }
 }

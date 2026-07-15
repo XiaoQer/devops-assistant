@@ -15,20 +15,32 @@ import { runtimeApi } from './runtime'
 describe('runtimeApi', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('uses Project-scoped overview and resource URLs', async () => {
+  it('uses Project-scoped environment directory, paginated inventory, and resource URLs', async () => {
     client.get.mockResolvedValue({})
 
-    await runtimeApi.overview(7)
+    await runtimeApi.environments(7)
+    await runtimeApi.inventory(7, {
+      environment: 'prod', resource: 'pods', page: 2, page_size: 50,
+      query: 'payments', status: 'Healthy',
+    })
     await runtimeApi.deploymentYaml(7, 8, 'prod', 'payments')
     await runtimeApi.podYaml(7, 8, 'prod', 'payments-a')
 
-    expect(client.get).toHaveBeenNthCalledWith(1, '/projects/7/runtime')
+    expect(client.get).toHaveBeenNthCalledWith(1, '/projects/7/runtime/environments')
     expect(client.get).toHaveBeenNthCalledWith(
       2,
-      '/projects/7/applications/8/environments/prod/runtime/deployments/payments/yaml',
+      '/projects/7/runtime',
+      { params: {
+        environment: 'prod', resource: 'pods', page: 2, page_size: 50,
+        query: 'payments', status: 'Healthy',
+      } },
     )
     expect(client.get).toHaveBeenNthCalledWith(
       3,
+      '/projects/7/applications/8/environments/prod/runtime/deployments/payments/yaml',
+    )
+    expect(client.get).toHaveBeenNthCalledWith(
+      4,
       '/projects/7/applications/8/runtime/pods/payments-a/yaml',
       { params: { environment: 'prod' } },
     )

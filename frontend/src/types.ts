@@ -199,6 +199,36 @@ export interface ProjectRuntimeOverview {
   refreshed_at: string
 }
 
+export interface RuntimeEnvironmentOption {
+  name: string
+  display_name: string
+}
+
+export interface RuntimeInventoryItem {
+  resource: 'deployment' | 'pod'
+  application_id: number
+  application_name: string
+  namespace: string
+  status: string
+  deployment?: RuntimeDeployment | null
+  pod_count?: number
+  restart_count: number
+  name?: string
+  ready?: boolean
+  node?: string
+  containers?: string[]
+  created_at?: string
+  error?: { code: string; message: string }
+}
+
+export interface RuntimeInventory {
+  environment: RuntimeEnvironmentOption & { cluster_name?: string }
+  summary: { deployments: number; healthy_pods: number; unhealthy_pods: number; restart_count: number }
+  items: RuntimeInventoryItem[]
+  pagination: { page: number; page_size: number; total: number; pages: number }
+  refreshed_at: string
+}
+
 export interface RuntimeExecSession {
   ticket: string
   expires_at: string

@@ -479,6 +479,43 @@ class KubernetesService:
         data.get("metadata", {}).pop("managedFields", None)
         return data
 
+    def list_application_deployment_pods(
+        self, deployment_name, namespace, app_name
+    ):
+        from app.utils.errors import ApiError
+
+        if deployment_name != app_name:
+            raise ApiError(
+                "Deployment 不属于当前 Application",
+                404,
+                "DEPLOYMENT_NOT_FOUND",
+            )
+        pods = self.core_api.list_namespaced_pod(
+            namespace, label_selector=f"app={app_name}"
+        ).items
+        if not pods:
+            pods = self.core_api.list_namespaced_pod(
+                namespace, label_selector=f"app.kubernetes.io/name={app_name}"
+            ).items
+        result = []
+        for pod in pods:
+            statuses = pod.status.container_statuses or []
+            waiting_reasons = [
+                item.state.waiting.reason
+                for item in statuses
+                if item.state and item.state.waiting
+            ]
+            result.append({
+                "name": pod.metadata.name,
+                "status": waiting_reasons[0] if waiting_reasons else pod.status.phase,
+                "ready": bool(statuses) and all(item.ready for item in statuses),
+                "restart_count": sum(int(item.restart_count or 0) for item in statuses),
+                "node": pod.spec.node_name,
+                "containers": [item.name for item in (pod.spec.containers or [])],
+                "created_at": self._timestamp(pod.metadata.creation_timestamp),
+            })
+        return result
+
     def restart_deployment(self, deployment_name, namespace, app_name):
         self.get_application_deployment_manifest(deployment_name, namespace, app_name)
         restarted_at = datetime.now(timezone.utc).isoformat()

@@ -68,6 +68,20 @@ class ApplicationRuntimeServiceTest(unittest.TestCase):
             "pod-1", "payments-prod", "payments-api"
         )
 
+    @patch("app.services.application_runtime_service.KubernetesClusterService.client")
+    def test_deployment_pods_use_environment_target_and_application_ownership(self, client):
+        client.return_value = self.target
+        self.target.list_application_deployment_pods.return_value = [{"name": "pod-1"}]
+
+        result = ApplicationRuntimeService().deployment_pods(
+            self.context, "payments-api"
+        )
+
+        self.assertEqual(result, [{"name": "pod-1"}])
+        self.target.list_application_deployment_pods.assert_called_once_with(
+            "payments-api", "payments-prod", "payments-api"
+        )
+
 class ReleaseRuntimeIntegrationTest(unittest.TestCase):
     class TestConfig:
         SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"

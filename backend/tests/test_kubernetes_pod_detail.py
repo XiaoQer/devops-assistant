@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from app.services.kubernetes_service import KubernetesService
+from app.utils.errors import ApiError
 
 
 def ns(**values):
@@ -11,6 +12,48 @@ def ns(**values):
 
 
 class KubernetesPodDetailTest(unittest.TestCase):
+    def test_lists_only_application_pods_for_owned_deployment(self):
+        now = datetime(2026, 7, 15, tzinfo=timezone.utc)
+        pod = ns(
+            metadata=ns(name="payments-api-a", labels={"app": "payments-api"}, creation_timestamp=now),
+            spec=ns(node_name="worker-1", containers=[ns(name="api")]),
+            status=ns(
+                phase="Running",
+                container_statuses=[ns(
+                    name="api", ready=True, restart_count=2,
+                    state=ns(waiting=None),
+                )],
+            ),
+        )
+        service = KubernetesService.__new__(KubernetesService)
+        service.core_api = Mock()
+        service.core_api.list_namespaced_pod.return_value = ns(items=[pod])
+
+        result = service.list_application_deployment_pods(
+            "payments-api", "payments-prod", "payments-api"
+        )
+
+        self.assertEqual(result, [{
+            "name": "payments-api-a", "status": "Running", "ready": True,
+            "restart_count": 2, "node": "worker-1", "containers": ["api"],
+            "created_at": now.isoformat(),
+        }])
+        service.core_api.list_namespaced_pod.assert_called_once_with(
+            "payments-prod", label_selector="app=payments-api"
+        )
+
+    def test_rejects_deployment_outside_application(self):
+        service = KubernetesService.__new__(KubernetesService)
+        service.core_api = Mock()
+
+        with self.assertRaises(ApiError) as raised:
+            service.list_application_deployment_pods(
+                "other", "payments-prod", "payments-api"
+            )
+
+        self.assertEqual(raised.exception.code, "DEPLOYMENT_NOT_FOUND")
+        service.core_api.list_namespaced_pod.assert_not_called()
+
     def test_returns_standardized_runtime_detail_without_environment_values(self):
         now = datetime(2026, 7, 15, tzinfo=timezone.utc)
         running = ns(started_at=now)

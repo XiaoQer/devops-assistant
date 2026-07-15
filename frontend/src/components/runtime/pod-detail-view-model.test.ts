@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { containerStateLabel, podStatusTone } from './pod-detail-view-model'
+import { containerStateLabel, podDetailPath, podStatusTone } from './pod-detail-view-model'
 
 describe('pod detail view model', () => {
   it('prioritizes waiting and terminated reasons over generic state labels', () => {
@@ -12,5 +12,11 @@ describe('pod detail view model', () => {
     expect(podStatusTone('Running', true)).toBe('success')
     expect(podStatusTone('Pending', false)).toBe('warning')
     expect(podStatusTone('Failed', false)).toBe('danger')
+  })
+
+  it('builds the Pod detail route from the expanded Deployment context', () => {
+    expect(podDetailPath(7, 'prod', 8, 'payments-a')).toBe(
+      '/devcenter/projects/7/runtime/environments/prod/applications/8/pods/payments-a',
+    )
   })
 })

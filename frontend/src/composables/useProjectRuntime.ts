@@ -7,7 +7,6 @@ export function useProjectRuntime(projectId: number, route: RouteLocationNormali
   const environments = ref<RuntimeEnvironmentOption[]>([])
   const inventory = ref<RuntimeInventory>()
   const environment = ref(String(route.query.environment || ''))
-  const resource = ref<'deployments' | 'pods'>(route.query.resource === 'pods' ? 'pods' : 'deployments')
   const query = ref(String(route.query.query || ''))
   const status = ref(String(route.query.status || ''))
   const page = ref(Math.max(1, Number(route.query.page) || 1))
@@ -19,7 +18,6 @@ export function useProjectRuntime(projectId: number, route: RouteLocationNormali
   function syncUrl() {
     void router.replace({ query: {
       environment: environment.value,
-      resource: resource.value,
       ...(query.value ? { query: query.value } : {}),
       ...(status.value ? { status: status.value } : {}),
       ...(page.value > 1 ? { page: String(page.value) } : {}),
@@ -40,7 +38,7 @@ export function useProjectRuntime(projectId: number, route: RouteLocationNormali
     loading.value = true
     try {
       inventory.value = await runtimeApi.inventory(projectId, {
-        environment: environment.value, resource: resource.value, page: page.value,
+        environment: environment.value, resource: 'deployments', page: page.value,
         page_size: pageSize.value, query: query.value || undefined, status: status.value || undefined,
       })
       refreshError.value = ''
@@ -58,7 +56,7 @@ export function useProjectRuntime(projectId: number, route: RouteLocationNormali
     syncUrl()
     void refresh()
   }
-  watch([environment, resource, status, pageSize], resetPageAndRefresh)
+  watch([environment, status, pageSize], resetPageAndRefresh)
   watch(page, () => { syncUrl(); void refresh() })
   let queryTimer: ReturnType<typeof setTimeout> | undefined
   watch(query, () => {
@@ -69,5 +67,5 @@ export function useProjectRuntime(projectId: number, route: RouteLocationNormali
     if (autoRefresh.value && (typeof document === 'undefined' || !document.hidden)) void refresh()
   }, 30_000)
   onScopeDispose(() => { clearInterval(timer); clearTimeout(queryTimer) })
-  return { environments, inventory, environment, resource, query, status, page, pageSize, loading, refreshError, autoRefresh, initialize, refresh }
+  return { environments, inventory, environment, query, status, page, pageSize, loading, refreshError, autoRefresh, initialize, refresh }
 }

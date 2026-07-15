@@ -36,13 +36,13 @@ describe('useProjectRuntime', () => {
     inventory.mockResolvedValue(data)
   })
 
-  it('loads the selected environment and server-paginated resource from the URL', async () => {
+  it('loads only server-paginated Deployments even when an old Pods URL is restored', async () => {
     const scope = effectScope()
     const state = scope.run(() => useProjectRuntime(7, route, router as never))!
     await state.initialize()
 
     expect(inventory).toHaveBeenCalledWith(7, expect.objectContaining({
-      environment: 'prod', resource: 'pods', page: 2, page_size: 20,
+      environment: 'prod', resource: 'deployments', page: 2, page_size: 20,
     }))
     expect(state.inventory.value).toEqual(data)
     scope.stop()
@@ -60,8 +60,11 @@ describe('useProjectRuntime', () => {
     expect(state.page.value).toBe(1)
     expect(inventory).toHaveBeenCalledTimes(1)
     expect(router.replace).toHaveBeenLastCalledWith({ query: expect.objectContaining({
-      environment: 'prod', resource: 'pods', query: 'billing',
+      environment: 'prod', query: 'billing',
     }) })
+    expect(router.replace).not.toHaveBeenLastCalledWith({
+      query: expect.objectContaining({ resource: expect.anything() }),
+    })
     scope.stop()
   })
 

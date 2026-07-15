@@ -7,7 +7,7 @@ export interface DeploymentPodTarget {
   deployment: string
 }
 
-interface DeploymentPodEntry {
+export interface DeploymentPodEntry {
   loading: boolean
   loaded: boolean
   pods: RuntimePodSummary[]

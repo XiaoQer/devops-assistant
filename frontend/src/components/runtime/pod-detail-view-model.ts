@@ -17,3 +17,9 @@ export function podStatusTone(status: string, ready: boolean): RuntimeTone {
 export function formatRuntimeTime(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '—'
 }
+
+export function podDetailPath(
+  projectId: number, environment: string, applicationId: number, podName: string,
+) {
+  return `/devcenter/projects/${projectId}/runtime/environments/${encodeURIComponent(environment)}/applications/${applicationId}/pods/${encodeURIComponent(podName)}`
+}

@@ -11,4 +11,11 @@ describe('retired navigation pages', () => {
     expect(devCenterLayoutSource).not.toContain("name:'Logs'")
     expect(mainLayoutSource).not.toContain("name: 'Releases'")
   })
+
+  it('keeps project navigation active for nested routes without rendering context cards', () => {
+    expect(devCenterLayoutSource).not.toContain('class="project-context"')
+    expect(devCenterLayoutSource).not.toContain('class="boundary-note"')
+    expect(devCenterLayoutSource).toContain("'is-active': isActive(item)")
+    expect(devCenterLayoutSource).toContain('route.path.startsWith(`${item.path}/`)')
+  })
 })

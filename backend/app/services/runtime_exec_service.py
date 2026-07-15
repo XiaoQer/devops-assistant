@@ -56,10 +56,14 @@ class RuntimeExecService:
             actor.id,
             target,
             {
-                "context": context,
+                "context_ref": {
+                    "project_id": context.project.id,
+                    "application_id": context.application.id,
+                    "environment": context.environment.environment_name,
+                },
                 "pod": pod_name,
                 "container": container,
-                "audit": audit,
+                "audit_id": audit.id,
             },
         )
         return {

@@ -2,8 +2,10 @@ import json
 import time
 
 from app.extensions import db
+from app.models import Application, Project, RuntimeOperationAudit
 from app.utils.errors import ApiError
 
+from .delivery_context_service import DeliveryContextService
 from .kubernetes_cluster_service import KubernetesClusterService
 
 
@@ -22,11 +24,11 @@ class RuntimeExecSocketBridge:
             raise ApiError("终端连接来源不受信任", 403, "EXEC_ORIGIN_REJECTED")
         session = self.registry.consume(ticket, actor.id)
         payload = session.payload
-        context = payload["context"]
-        audit = payload["audit"]
         stream = None
+        audit = None
         last_activity = self.clock()
         try:
+            context, audit = self._rehydrate(payload)
             stream = KubernetesClusterService().client(
                 context.cluster
             ).open_application_pod_exec(
@@ -80,10 +82,33 @@ class RuntimeExecSocketBridge:
             db.session.commit()
         except Exception as exc:
             message = exc.message if isinstance(exc, ApiError) else "终端会话异常结束"
-            audit.finish("Failed", message)
-            db.session.commit()
+            if audit is not None:
+                audit.finish("Failed", message)
+                db.session.commit()
             raise
         finally:
             if stream is not None:
                 stream.close()
             self.registry.release(ticket)
+
+    @staticmethod
+    def _rehydrate(payload):
+        context_ref = payload.get("context_ref")
+        if context_ref:
+            project = Project.query.get(context_ref["project_id"])
+            application = Application.query.filter_by(
+                id=context_ref["application_id"],
+                project_id=project.id if project else None,
+            ).first() if project else None
+            if not project or not application:
+                raise ApiError("终端上下文已失效", 404, "EXEC_CONTEXT_NOT_FOUND")
+            context = DeliveryContextService().resolve(
+                project, application, context_ref["environment"]
+            )
+            audit = RuntimeOperationAudit.query.get(payload["audit_id"])
+            if not audit:
+                raise ApiError("终端审计记录不存在", 404, "EXEC_AUDIT_NOT_FOUND")
+            return context, audit
+        # Backward-compatible fallback for tickets issued before context IDs
+        # were introduced; new tickets never carry ORM instances.
+        return payload["context"], payload["audit"]

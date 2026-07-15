@@ -149,6 +149,42 @@ class RuntimeExecSocketBridgeTest(unittest.TestCase):
         self.assertEqual(stream.stdin, ["pwd\n"])
         self.audit.finish.assert_called_once_with("Succeeded")
 
+    @patch("app.services.runtime_exec_socket.db.session.commit")
+    @patch("app.services.runtime_exec_socket.RuntimeOperationAudit")
+    @patch("app.services.runtime_exec_socket.Application")
+    @patch("app.services.runtime_exec_socket.Project")
+    @patch("app.services.runtime_exec_socket.DeliveryContextService.resolve")
+    @patch("app.services.runtime_exec_socket.KubernetesClusterService.client")
+    def test_websocket_rehydrates_context_and_audit_from_ticket_ids(
+        self, client, resolve, project_model, application_model, audit_model, _commit
+    ):
+        stream = FakeStream()
+        client.return_value.open_application_pod_exec.return_value = stream
+        fresh_context = self.context
+        fresh_audit = Mock()
+        resolve.return_value = fresh_context
+        project_model.query.get.return_value = SimpleNamespace(id=1)
+        application_model.query.filter_by.return_value.first.return_value = self.context.application
+        audit_model.query.get.return_value = fresh_audit
+        self.ticket.payload = {
+            "context_ref": {"project_id": 1, "application_id": 2, "environment": "prod"},
+            "pod": "payments-a",
+            "container": "api",
+            "audit_id": 42,
+        }
+
+        RuntimeExecSocketBridge(self.registry).run(
+            FakeWebSocket([json.dumps({"type": "close"})]),
+            "ticket",
+            SimpleNamespace(id=7),
+            "http://localhost:5173",
+            ["http://localhost:5173"],
+        )
+
+        resolve.assert_called_once()
+        audit_model.query.get.assert_called_once_with(42)
+        fresh_audit.finish.assert_called_once_with("Succeeded")
+
 
 if __name__ == "__main__":
     unittest.main()

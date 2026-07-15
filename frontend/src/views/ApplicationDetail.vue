@@ -105,38 +105,14 @@
       <el-tabs v-model="activeTab" class="detail-tabs">
         <el-tab-pane label="服务概览" name="overview"><ApplicationOverview :application="app" /></el-tab-pane>
         <el-tab-pane :label="`环境 (${environmentRecords.length})`" name="environments"><EnvironmentCenter :application-id="app.id" :project-id="app.project_id || 0" @configure="openEnvironmentConfig" /></el-tab-pane>
-        <el-tab-pane :label="`Pipeline (${buildVersions.length})`" name="pipeline">
-          <section class="surface tab-card pipeline-panel">
-            <div class="surface-header">
-              <div>
-                <h3>构建版本与发布批次</h3>
-                <p>一次构建，多环境复用同一个镜像版本</p>
-              </div>
-              <div class="pipeline-panel-actions">
-                <el-button @click="refreshReleaseBatches">刷新状态</el-button>
-                <el-button :loading="deploying" @click="openDeployPlan">构建新版本</el-button>
-              </div>
-            </div>
-            <div v-if="buildVersions.length" class="build-version-list">
-              <div class="build-version-head"><strong>构建版本</strong><span>{{ buildVersions.length }} versions</span></div>
-              <article v-for="build in buildVersions.slice(0, 4)" :key="build.id" class="build-version-item">
-                <div class="build-version-main">
-                  <b>{{ build.version }}</b>
-                  <div class="build-info-grid">
-                    <span><i>镜像</i>{{ build.image }}</span>
-                    <span><i>代码</i>{{ build.git_branch }} · {{ build.git_commit?.slice(0, 8) || '未锁定提交' }}</span>
-                    <span><i>创建</i>{{ format(build.created_at) }}</span>
-                    <span v-if="buildReleaseBatch(build.id)"><i>发布</i>{{ buildReleaseBatch(build.id)?.status }} · {{ buildReleaseBatch(build.id)?.targets.length }} 个环境</span>
-                  </div>
-                  <small v-if="build.error_message" class="build-error">{{ build.error_message }}</small>
-                </div>
-                <StatusBadge :status="build.status" />
-                <el-button v-if="build.pipeline_run_name" text @click="$router.push(`/devcenter/projects/${projectId}/pipelines/${build.pipeline_run_name}`)">详情</el-button>
-                <el-button v-if="build.status === 'Succeeded' && !buildReleaseBatch(build.id)" text @click="openDeployPlan">选择环境发布</el-button>
-              </article>
-            </div>
-            <EmptyState v-if="!buildVersions.length" title="暂无构建版本" description="选择分支和提交后开始构建，构建完成后可发布到多个环境。" />
-          </section>
+        <el-tab-pane :label="`Pipeline (${pipelineBuildCount})`" name="pipeline">
+          <ApplicationBuildWorkspace
+            :project-id="projectId"
+            :application-id="app.id"
+            :selected-build-id="pipelineSelectedBuildId"
+            @build-count="pipelineBuildCount = $event"
+            @select-build="pipelineSelectedBuildId = $event"
+          />
         </el-tab-pane>
         <el-tab-pane :label="`发布记录 (${releases.length})`" name="releases"><ReleaseHistoryTable :releases="releases" :rollback-id="rollbackId" @logs="openLogs" @rollback="rollback" /></el-tab-pane>
         <el-tab-pane label="Kubernetes 资源" name="runtime"><el-skeleton :loading="loadingRuntime" animated :rows="8"><RuntimeStatusPanel :status="runtime" :application-id="app.id" :project-id="projectId" :environment="environment" /></el-skeleton></el-tab-pane>
@@ -155,7 +131,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { applicationApi } from '../api/application'
 import type {
   Application,
-  BuildVersion,
   ApplicationEnvironment,
   Execution,
   Release,
@@ -173,12 +148,14 @@ import RuntimeStatusPanel from '../components/application/RuntimeStatusPanel.vue
 import EnvironmentCenter from '../components/application/EnvironmentCenter.vue'
 import ConfigurationCenter from '../components/application/ConfigurationCenter.vue'
 import DetailBreadcrumb from '../components/common/DetailBreadcrumb.vue'
+import ApplicationBuildWorkspace from '../components/pipeline/ApplicationBuildWorkspace.vue'
 
 const route = useRoute()
 const router = useRouter()
 const app = ref<Application>()
 const executions = ref<Execution[]>([])
-const buildVersions = ref<BuildVersion[]>([])
+const pipelineBuildCount = ref(0)
+const pipelineSelectedBuildId = ref<number>()
 const releases = ref<Release[]>([])
 const runtime = ref<RuntimeStatus>()
 const environmentRuntimes = ref<Record<string, RuntimeStatus | undefined>>({})
@@ -197,7 +174,6 @@ const releaseBranch = ref('')
 const releaseCommit = ref('')
 const releaseEnvironmentIds = ref<number[]>([])
 const releaseBatch = ref<ReleaseBatch>()
-const releaseBatches = ref<ReleaseBatch[]>([])
 const configEnvironmentId = ref<number>()
 const environmentConfigDrawer = ref(false)
 const rollbackId = ref(0)
@@ -216,11 +192,10 @@ async function load() {
   loadingApp.value = true
   try {
     const id = Number(route.params.id)
-    const [application, executionItems, envItems, buildItems] = await Promise.all([
+    const [application, executionItems, envItems] = await Promise.all([
       applicationApi.get(projectId.value, id),
       applicationApi.executions(projectId.value, id),
       applicationApi.environments(projectId.value, id),
-      applicationApi.buildVersions(projectId.value, id),
     ])
     app.value = application
     const requestedTab = String(route.query.tab || '')
@@ -229,8 +204,6 @@ async function load() {
     }
     executions.value = executionItems
     environmentRecords.value = envItems
-    buildVersions.value = buildItems
-    releaseBatches.value = await applicationApi.releaseBatches(projectId.value, id)
     if (!environmentOptions.value.includes(environment.value)) {
       environment.value = environmentOptions.value[0] || ''
     }
@@ -280,10 +253,6 @@ function latestEnvironmentRelease(environmentName: string) {
   return environmentReleases.value[environmentName]?.[0]
 }
 
-function buildReleaseBatch(buildId: number) {
-  return releaseBatches.value.find(batch => batch.build_version_id === buildId)
-}
-
 function selectEnvironment(value: string) {
   environment.value = value
 }
@@ -300,15 +269,6 @@ async function loadEnvironment() {
     loadRuntime(),
   ])
   environmentReleases.value = { ...environmentReleases.value, [environment.value]: releases.value }
-}
-
-async function refreshReleaseBatches() {
-  if (!app.value) return
-  try {
-    releaseBatches.value = await applicationApi.releaseBatches(projectId.value, app.value.id)
-  } catch (error) {
-    ElMessage.error((error as Error).message)
-  }
 }
 
 async function openDeployPlan() {
@@ -686,23 +646,6 @@ onMounted(load)
     grid-template-columns: 1fr;
   }
 
-  .build-version-item {
-    grid-template-columns: 1fr auto;
-  }
-
-  .build-version-item > :deep(.status-badge) {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .build-version-item > :deep(.el-button) {
-    justify-self: start;
-  }
-
-  .build-info-grid {
-    grid-template-columns: 1fr;
-  }
-
   .environment-summary-card {
     grid-template-columns: 1fr 1fr;
   }
@@ -918,118 +861,8 @@ onMounted(load)
   }
 }
 
-.pipeline-panel,
 .log-guide {
   overflow: hidden;
-}
-
-.pipeline-panel-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.build-version-list {
-  margin: 0 18px;
-  padding: 14px 0 6px;
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.build-version-head,
-.build-version-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.build-version-head {
-  justify-content: space-between;
-  padding: 0 10px 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.build-version-head strong {
-  color: var(--text-2);
-  font-size: 13px;
-}
-
-.build-version-item {
-  min-height: 64px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px 128px 110px;
-  align-items: center;
-  padding: 8px 10px;
-  border-radius: 9px;
-}
-
-.build-version-item:hover {
-  background: var(--surface-soft);
-}
-
-.build-version-item > div {
-  min-width: 0;
-}
-
-.build-version-item > :deep(.el-tag),
-.build-version-item > :deep(.status-badge) {
-  justify-self: center;
-}
-
-.build-version-item > :deep(.el-button) {
-  justify-self: end;
-  padding: 6px 4px;
-  white-space: nowrap;
-}
-
-.build-version-item b,
-.build-version-item small {
-  display: block;
-}
-
-.build-version-item small.build-error {
-  color: var(--danger);
-}
-
-.build-version-item small.build-delivery-summary {
-  color: var(--primary);
-  font-weight: 700;
-}
-
-.build-version-item b {
-  color: var(--text-2);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-
-.build-info-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 18px;
-  margin-top: 7px;
-}
-
-.build-info-grid span {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.build-info-grid i {
-  margin-right: 6px;
-  color: var(--subtle);
-  font-style: normal;
-}
-
-.build-version-item small {
-  margin-top: 4px;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .pipeline-list {
@@ -1313,10 +1146,6 @@ onMounted(load)
 
   .pipeline-item {
     align-items: flex-start;
-  }
-
-  .pipeline-panel-actions {
-    flex-wrap: wrap;
   }
 
   .pipeline-action {

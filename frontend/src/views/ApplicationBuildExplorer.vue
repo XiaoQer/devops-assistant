@@ -38,8 +38,17 @@
         :selected-step-id="selectedStepId"
         :loading="loadingDetail"
         :logs-error="logsError"
+        :batch="selectedBatch"
+        :selected-target-id="selectedTargetId"
+        :deploy-steps="deploySteps"
+        :selected-deploy-step-id="selectedDeployStepId"
+        :deploy-loading="deployLoading"
+        :deploy-error="deployError"
         @select-step="selectedStepId = $event"
         @retry-logs="reloadLogs"
+        @select-target="selectTarget"
+        @select-deploy-step="selectedDeployStepId = $event"
+        @retry-deploy-logs="retryDeployLogs"
       />
     </div>
 
@@ -78,13 +87,15 @@ import {
   canRefreshHistory,
   createRequestGate,
   defaultExecutionStepId,
+  defaultTargetId,
   explorerContentState,
+  batchForBuild,
+  hasActiveDelivery,
   normalizeExecutionSteps,
   selectRequestedBuild,
-  shouldPollBuild,
   type ExecutionStepDetail,
 } from '../features/build-explorer/state'
-import type { Application, BuildVersion, CicdEnvironmentOption } from '../types'
+import type { Application, BuildVersion, CicdEnvironmentOption, ReleaseBatch } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -93,17 +104,25 @@ const applicationId = Number(route.params.applicationId)
 const application = ref<Application>()
 const builds = ref<BuildVersion[]>([])
 const environments = ref<CicdEnvironmentOption[]>([])
+const releaseBatches = ref<ReleaseBatch[]>([])
 const selectedBuild = ref<BuildVersion>()
+const selectedBatch = ref<ReleaseBatch>()
 const steps = ref<ExecutionStepDetail[]>([])
 const selectedStepId = ref<string>()
+const selectedTargetId = ref<number>()
+const deploySteps = ref<ExecutionStepDetail[]>([])
+const selectedDeployStepId = ref<string>()
 const invalidRequestedId = ref(false)
 const contextError = ref('')
 const logsError = ref('')
+const deployError = ref('')
 const loadingContext = ref(true)
 const loadingDetail = ref(false)
+const deployLoading = ref(false)
 const buildDrawer = ref(false)
 const detailPanel = ref<{ scrollIntoView: () => void }>()
 const contextGate = createRequestGate()
+const targetGate = createRequestGate()
 const contentState = computed(() => explorerContentState(
   builds.value,
   invalidRequestedId.value,
@@ -126,10 +145,11 @@ async function loadContext() {
   loadingContext.value = true
   contextError.value = ''
   try {
-    const [applicationData, buildItems, environmentItems] = await Promise.all([
+    const [applicationData, buildItems, environmentItems, batchItems] = await Promise.all([
       applicationApi.get(projectId, applicationId),
       applicationApi.buildVersions(projectId, applicationId),
       applicationApi.environments(projectId, applicationId),
+      applicationApi.releaseBatches(projectId, applicationId),
     ])
     if (!contextGate.isCurrent(contextGeneration)) return
     application.value = applicationData
@@ -140,6 +160,7 @@ async function loadContext() {
       display_name: item.display_name,
       approval_required: item.approval_required,
     }))
+    releaseBatches.value = batchItems
     await resolveRouteSelection()
   } catch (error) {
     if (contextGate.isCurrent(contextGeneration)) {
@@ -157,8 +178,10 @@ async function resolveRouteSelection() {
   invalidRequestedId.value = result.invalidRequestedId
   if (!result.build) {
     selectedBuild.value = undefined
+    selectedBatch.value = undefined
     steps.value = []
     selectedStepId.value = undefined
+    resetDeploySelection()
     stopPolling()
     return
   }
@@ -176,17 +199,25 @@ async function loadSelectedBuild(buildId: number) {
   logsError.value = ''
   steps.value = []
   selectedStepId.value = undefined
+  selectedBatch.value = undefined
+  resetDeploySelection()
   try {
     const build = await applicationApi.buildVersion(projectId, applicationId, buildId)
     if (generation !== requestGeneration) return
     selectedBuild.value = build
     const index = builds.value.findIndex(item => item.id === build.id)
     if (index >= 0) builds.value.splice(index, 1, build)
-    if (build.pipeline_run_name) await loadLogs(build, generation)
+    selectedBatch.value = batchForBuild(releaseBatches.value, build.id)
+    const targetId = defaultTargetId(selectedBatch.value?.targets || [])
+    const requests: Promise<void>[] = []
+    if (build.pipeline_run_name) requests.push(loadLogs(build, generation))
+    if (targetId !== undefined) requests.push(loadTargetLogs(targetId))
+    await Promise.all(requests)
   } catch (error) {
     if (generation !== requestGeneration) return
     invalidRequestedId.value = true
     selectedBuild.value = undefined
+    selectedBatch.value = undefined
     ElMessage.error((error as Error).message)
   } finally {
     if (generation === requestGeneration) {
@@ -194,6 +225,48 @@ async function loadSelectedBuild(buildId: number) {
       syncPolling()
     }
   }
+}
+
+function resetDeploySelection() {
+  targetGate.next()
+  selectedTargetId.value = undefined
+  deploySteps.value = []
+  selectedDeployStepId.value = undefined
+  deployError.value = ''
+  deployLoading.value = false
+}
+
+async function loadTargetLogs(targetId: number) {
+  const generation = targetGate.next()
+  selectedTargetId.value = targetId
+  deploySteps.value = []
+  selectedDeployStepId.value = undefined
+  deployError.value = ''
+  const target = selectedBatch.value?.targets.find(item => item.id === targetId)
+  if (!target?.pipeline_run_name) {
+    deployLoading.value = false
+    return
+  }
+  deployLoading.value = true
+  try {
+    const details = await pipelineApi.logs(projectId, target.pipeline_run_name)
+    if (!targetGate.isCurrent(generation)) return
+    deploySteps.value = normalizeExecutionSteps(details)
+    selectedDeployStepId.value = defaultExecutionStepId(deploySteps.value)
+  } catch (error) {
+    if (targetGate.isCurrent(generation)) deployError.value = (error as Error).message
+  } finally {
+    if (targetGate.isCurrent(generation)) deployLoading.value = false
+  }
+}
+
+function selectTarget(targetId: number) {
+  if (selectedTargetId.value === targetId) return
+  void loadTargetLogs(targetId)
+}
+
+function retryDeployLogs() {
+  if (selectedTargetId.value !== undefined) void loadTargetLogs(selectedTargetId.value)
 }
 
 async function loadLogs(build: BuildVersion, generation: number) {
@@ -224,9 +297,13 @@ async function refreshSelected() {
   if (!canRefreshHistory(loadingContext.value, buildId)) return
   const contextGeneration = contextGate.next()
   try {
-    const buildItems = await applicationApi.buildVersions(projectId, applicationId)
+    const [buildItems, batchItems] = await Promise.all([
+      applicationApi.buildVersions(projectId, applicationId),
+      applicationApi.releaseBatches(projectId, applicationId),
+    ])
     if (!contextGate.isCurrent(contextGeneration)) return
     builds.value = buildItems
+    releaseBatches.value = batchItems
     if (builds.value.some(item => item.id === buildId)) await loadSelectedBuild(buildId)
   } catch (error) {
     if (contextGate.isCurrent(contextGeneration)) ElMessage.error((error as Error).message)
@@ -257,7 +334,7 @@ function backToWorkbench() {
 
 function syncPolling() {
   stopPolling()
-  if (selectedBuild.value && shouldPollBuild(selectedBuild.value.status)) {
+  if (hasActiveDelivery(selectedBuild.value, selectedBatch.value)) {
     refreshTimer = window.setInterval(() => void refreshSelected(), 15000)
   }
 }
@@ -278,6 +355,7 @@ watch(() => route.params.buildId, () => {
 onMounted(() => void loadContext())
 onBeforeUnmount(() => {
   contextGate.next()
+  targetGate.next()
   requestGeneration += 1
   stopPolling()
 })

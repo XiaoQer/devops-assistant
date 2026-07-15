@@ -4,13 +4,13 @@ import {
   buildExplorerPath,
   canRefreshHistory,
   createRequestGate,
+  defaultTargetId,
   batchForBuild,
   defaultExecutionStepId,
   explorerContentState,
   hasActiveDelivery,
   normalizeExecutionSteps,
   selectRequestedBuild,
-  shouldPollBuild,
   targetExecutionState,
 } from './state'
 
@@ -173,6 +173,7 @@ describe('build explorer state', () => {
     } as ReleaseBatch
     expect(hasActiveDelivery(build(42), batch)).toBe(true)
     expect(hasActiveDelivery(build(42), { ...batch, status: 'Succeeded', targets: [{ id: 7, status: 'Succeeded' }] } as ReleaseBatch)).toBe(false)
+    expect(hasActiveDelivery({ ...build(42), status: 'Running' }, undefined)).toBe(true)
   })
 
   it('describes target business state without inventing a PipelineRun', () => {
@@ -190,9 +191,20 @@ describe('build explorer state', () => {
     expect(deploying).toEqual({ canLoadLogs: true, description: '部署中' })
   })
 
-  it('polls only non-terminal build states', () => {
-    expect(shouldPollBuild('Running')).toBe(true)
-    expect(shouldPollBuild('Succeeded')).toBe(false)
-    expect(shouldPollBuild('Failed')).toBe(false)
+  it('selects failed, active, runnable, then first environment target', () => {
+    const targets = [
+      { id: 1, status: 'Succeeded', pipeline_run_name: 'deploy-dev' },
+      { id: 2, status: 'Failed', pipeline_run_name: 'deploy-qa' },
+    ] as ReleaseTarget[]
+    expect(defaultTargetId(targets)).toBe(2)
+    expect(defaultTargetId([
+      { id: 1, status: 'Succeeded', pipeline_run_name: 'deploy-dev' },
+      { id: 2, status: 'Deploying', pipeline_run_name: 'deploy-qa' },
+    ] as ReleaseTarget[])).toBe(2)
+    expect(defaultTargetId([
+      { id: 1, status: 'WaitingApproval' },
+      { id: 2, status: 'Succeeded', pipeline_run_name: 'deploy-qa' },
+    ] as ReleaseTarget[])).toBe(2)
+    expect(defaultTargetId([{ id: 1, status: 'WaitingApproval' }] as ReleaseTarget[])).toBe(1)
   })
 })

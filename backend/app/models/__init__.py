@@ -13,11 +13,12 @@ from .user_session import UserSession
 from .build_version import ApplicationBuildVersion
 from .application_release_batch import ApplicationReleaseBatch
 from .application_release_target import ApplicationReleaseTarget
+from .runtime_operation_audit import RuntimeOperationAudit
 
 __all__ = [
     "Application", "PipelineExecution", "Project", "ProjectMember",
     "KubernetesCluster", "ReleaseRecord",
     "ApplicationEnvironment", "ApplicationConfig", "ApprovalRecord",
     "ContainerRegistry", "User", "UserSession", "ApplicationBuildVersion",
-    "ApplicationReleaseBatch", "ApplicationReleaseTarget",
+    "ApplicationReleaseBatch", "ApplicationReleaseTarget", "RuntimeOperationAudit",
 ]

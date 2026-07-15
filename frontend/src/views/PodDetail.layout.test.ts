@@ -13,4 +13,9 @@ describe('PodDetail container-first layout contract', () => {
     expect(source).toContain('@container-terminal="openContainerTerminal"')
     expect(source).toContain('class="pod-title pod-page-header"')
   })
+
+  it('uses compact page-header typography instead of the global oversized header', () => {
+    expect(source).toContain('.pod-page-header :deep(h1){max-width:900px;font-size:24px')
+    expect(source).toContain('.pod-page-header :deep(.eyebrow){min-height:0')
+  })
 })

@@ -24,6 +24,7 @@ describe('runtimeApi', () => {
       query: 'payments', status: 'Healthy',
     })
     await runtimeApi.podDetail(7, 8, 'prod', 'payments-a')
+    await runtimeApi.deploymentPods(7, 8, 'prod', 'payments')
     await runtimeApi.deploymentYaml(7, 8, 'prod', 'payments')
     await runtimeApi.podYaml(7, 8, 'prod', 'payments-a')
 
@@ -42,10 +43,14 @@ describe('runtimeApi', () => {
     )
     expect(client.get).toHaveBeenNthCalledWith(
       4,
-      '/projects/7/applications/8/environments/prod/runtime/deployments/payments/yaml',
+      '/projects/7/applications/8/environments/prod/runtime/deployments/payments/pods',
     )
     expect(client.get).toHaveBeenNthCalledWith(
       5,
+      '/projects/7/applications/8/environments/prod/runtime/deployments/payments/yaml',
+    )
+    expect(client.get).toHaveBeenNthCalledWith(
+      6,
       '/projects/7/applications/8/runtime/pods/payments-a/yaml',
       { params: { environment: 'prod' } },
     )

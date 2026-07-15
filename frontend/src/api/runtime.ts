@@ -1,5 +1,5 @@
 import { client } from './client'
-import type { RuntimeEnvironmentOption, RuntimeExecSession, RuntimeInventory, RuntimePodDetail } from '../types'
+import type { RuntimeEnvironmentOption, RuntimeExecSession, RuntimeInventory, RuntimePodDetail, RuntimePodSummary } from '../types'
 
 
 const base = (projectId: number, applicationId: number, environment: string) => (
@@ -21,6 +21,11 @@ export const runtimeApi = {
     projectId: number, applicationId: number, environment: string, pod: string,
   ) => client.get<never, RuntimePodDetail>(
     `${base(projectId, applicationId, environment)}/pods/${encodeURIComponent(pod)}`,
+  ),
+  deploymentPods: (
+    projectId: number, applicationId: number, environment: string, deployment: string,
+  ) => client.get<never, RuntimePodSummary[]>(
+    `${base(projectId, applicationId, environment)}/deployments/${encodeURIComponent(deployment)}/pods`,
   ),
   deploymentYaml: (
     projectId: number, applicationId: number, environment: string, deployment: string,

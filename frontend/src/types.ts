@@ -229,6 +229,16 @@ export interface RuntimeInventory {
   refreshed_at: string
 }
 
+export interface RuntimePodSummary {
+  name: string
+  status: string
+  ready: boolean
+  restart_count: number
+  node?: string | null
+  containers: string[]
+  created_at?: string | null
+}
+
 export interface RuntimeExecSession {
   ticket: string
   expires_at: string

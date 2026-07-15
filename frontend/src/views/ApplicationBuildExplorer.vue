@@ -84,6 +84,7 @@ import ApplicationBuildDetail from '../components/pipeline/ApplicationBuildDetai
 import QuickBuildDrawer from '../components/pipeline/QuickBuildDrawer.vue'
 import {
   buildExplorerPath,
+  canApplyBuildRefresh,
   canRefreshHistory,
   createRequestGate,
   defaultExecutionStepId,
@@ -284,6 +285,7 @@ async function loadLogs(build: BuildVersion, generation: number) {
 
 function selectBuild(buildId: number) {
   if (selectedBuild.value?.id === buildId) return
+  contextGate.next()
   void router.push(buildExplorerPath(projectId, applicationId, buildId)).then(async () => {
     if (window.matchMedia('(max-width: 760px)').matches) {
       await nextTick()
@@ -301,7 +303,8 @@ async function refreshSelected() {
       applicationApi.buildVersions(projectId, applicationId),
       applicationApi.releaseBatches(projectId, applicationId),
     ])
-    if (!contextGate.isCurrent(contextGeneration)) return
+    if (!contextGate.isCurrent(contextGeneration)
+      || !canApplyBuildRefresh(buildId, requestedBuildId(), selectedBuild.value?.id)) return
     builds.value = buildItems
     releaseBatches.value = batchItems
     if (builds.value.some(item => item.id === buildId)) await loadSelectedBuild(buildId)
@@ -349,7 +352,10 @@ function shortRepo(value: string) {
 }
 
 watch(() => route.params.buildId, () => {
-  if (!loadingContext.value && builds.value.length) void resolveRouteSelection()
+  if (!loadingContext.value && builds.value.length) {
+    contextGate.next()
+    void resolveRouteSelection()
+  }
 })
 
 onMounted(() => void loadContext())

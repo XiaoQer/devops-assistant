@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { BuildVersion, PipelineLogDetails, ReleaseBatch, ReleaseTarget } from '../../types'
 import {
   buildExplorerPath,
+  canApplyBuildRefresh,
   canRefreshHistory,
   createRequestGate,
   defaultTargetId,
@@ -112,6 +113,22 @@ describe('build explorer state', () => {
     expect(steps.map(step => step.logs)).toEqual(['clone logs', 'npm logs', 'kaniko logs'])
   })
 
+  it('uses container-level status for steps in the same TaskRun', () => {
+    const details: PipelineLogDetails = {
+      ...javaLogDetails,
+      tasks: [{
+        name: 'clone-test', task_name: 'clone-and-test', status: 'Failed',
+        steps: [
+          { step: 'git-clone', container: 'step-git-clone', status: 'Succeeded', logs: 'ok' },
+          { step: 'npm', container: 'step-npm', status: 'Failed', logs: 'failed' },
+        ],
+      }],
+    }
+    expect(normalizeExecutionSteps(details).map(step => step.status)).toEqual([
+      'Succeeded', 'Failed',
+    ])
+  })
+
   it('does not invent a separate push step for Dockerfile Kaniko', () => {
     const details: PipelineLogDetails = {
       ...javaLogDetails,
@@ -141,6 +158,11 @@ describe('build explorer state', () => {
   it('does not let polling supersede a full context load', () => {
     expect(canRefreshHistory(true, 42)).toBe(false)
     expect(canRefreshHistory(false, 42)).toBe(true)
+  })
+
+  it('rejects an old build refresh after the route selection changes', () => {
+    expect(canApplyBuildRefresh(42, 43, 43)).toBe(false)
+    expect(canApplyBuildRefresh(42, 42, 42)).toBe(true)
   })
 
   it('selects failed, then active, then first execution step', () => {

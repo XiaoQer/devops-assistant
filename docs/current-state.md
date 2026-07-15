@@ -50,7 +50,10 @@
   需要审批的环境继续等待批准；成功构建还可追加尚未关联的环境。工作台刷新只协调当前 Project
   的活跃批次，并通过可恢复租约和 Release Target 标签防止并发重复部署。工作台不再重复展示
   最近执行列表。Application 卡片进入专用构建浏览页，在同一页面以左侧历史列表和右侧详情展示
-  构建元数据、Clone/Build/Push 步骤及所选步骤日志；运行中构建自动刷新，终态构建停止轮询。
+  构建元数据及 Tekton 实际返回的 Build Task/Step 和单步骤日志；详情同时按环境展示关联发布目标，
+  已创建 Deploy-only PipelineRun 的目标可查看实际部署 Task/Step 和日志，等待审批或尚未创建
+  PipelineRun 的目标只展示真实业务状态。构建或任一环境目标处于活跃状态时自动刷新，全部终态后
+  停止轮询。
 - 发布历史、回滚流程和交付状态同步。
 - Application Environment 已解析为 Project 交付上下文：环境由用户在 Application 工作区
   中显式创建、编辑和删除，不再自动补建 dev；已绑定且连接成功的 Kubernetes 集群作为唯一

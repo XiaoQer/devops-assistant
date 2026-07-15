@@ -47,6 +47,7 @@ export interface BuildVersion {
 export interface PipelineLogStep {
   step: string
   container: string
+  status?: string
   logs: string
 }
 

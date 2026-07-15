@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -25,6 +26,45 @@ class Kubernetes:
     def __init__(self):
         self.custom_api = CustomApi()
         self.core_api = object()
+
+
+def test_pipeline_log_details_report_each_step_container_status():
+    kubernetes = Kubernetes()
+    core_api = SimpleNamespace()
+    kubernetes.core_api = core_api
+    service = TektonService(kubernetes)
+    service.get_pipeline_run_status = lambda *_: {"status": "Failed"}
+    service.list_task_runs = lambda *_: [
+        {"name": "run-clone-test", "task_name": "clone-and-test", "status": "Failed"}
+    ]
+    pod = SimpleNamespace(
+        metadata=SimpleNamespace(
+            name="run-clone-test-pod",
+            labels={"tekton.dev/taskRun": "run-clone-test"},
+        ),
+        status=SimpleNamespace(container_statuses=[
+            SimpleNamespace(name="step-git-clone", state=SimpleNamespace(
+                waiting=None, running=None, terminated=SimpleNamespace(exit_code=0),
+            )),
+            SimpleNamespace(name="step-npm", state=SimpleNamespace(
+                waiting=None, running=None, terminated=SimpleNamespace(exit_code=1),
+            )),
+        ]),
+        spec=SimpleNamespace(containers=[
+            SimpleNamespace(name="step-git-clone"),
+            SimpleNamespace(name="step-npm"),
+        ]),
+    )
+    core_api.list_namespaced_pod = lambda *_args, **_kwargs: SimpleNamespace(items=[pod])
+    core_api.read_namespaced_pod_log = (
+        lambda *_args, **kwargs: f"{kwargs['container']} logs"
+    )
+
+    details = service.get_pipeline_run_log_details("run", "tekton")
+
+    assert [(step["step"], step["status"]) for step in details["tasks"][0]["steps"]] == [
+        ("git-clone", "Succeeded"), ("npm", "Failed"),
+    ]
 
 
 def test_pipeline_run_contains_source_workspace_and_target_namespace():

@@ -416,6 +416,7 @@ class TektonService:
                     logs.append({
                         "step": container.name.removeprefix("step-"),
                         "container": container.name,
+                        "status": self._container_execution_status(status),
                         "logs": text,
                     })
             tasks.append({**task, "pod": pod.metadata.name if pod else None, "steps": logs})
@@ -428,3 +429,15 @@ class TektonService:
             "finished_at": pipeline.get("finished_at"),
             "tasks": tasks,
         }
+
+    @staticmethod
+    def _container_execution_status(status):
+        if not status:
+            return "Pending"
+        if status.state.waiting:
+            return "Pending"
+        if status.state.running:
+            return "Running"
+        if status.state.terminated:
+            return "Succeeded" if status.state.terminated.exit_code == 0 else "Failed"
+        return "Pending"

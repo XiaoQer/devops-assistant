@@ -36,6 +36,14 @@ export function canRefreshHistory(loadingContext: boolean, buildId?: number): bu
   return !loadingContext && buildId !== undefined
 }
 
+export function canApplyBuildRefresh(
+  capturedBuildId: number,
+  requestedBuildId?: number,
+  selectedBuildId?: number,
+) {
+  return capturedBuildId === requestedBuildId && capturedBuildId === selectedBuildId
+}
+
 export function explorerContentState(
   builds: BuildVersion[],
   invalidRequestedId: boolean,
@@ -54,7 +62,7 @@ export function normalizeExecutionSteps(details: PipelineLogDetails): ExecutionS
     taskName: task.task_name,
     name: step.step,
     label: `${task.task_name} / ${step.step}`,
-    status: task.status,
+    status: step.status || task.status,
     startedAt: task.started_at,
     finishedAt: task.finished_at,
     logs: step.logs,

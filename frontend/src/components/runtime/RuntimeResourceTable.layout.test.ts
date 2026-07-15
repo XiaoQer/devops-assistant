@@ -9,4 +9,10 @@ describe('RuntimeResourceTable action contract', () => {
     expect(source).not.toContain('<el-button link data-runtime-action="yaml"')
     expect(source).not.toContain('<el-button link type="warning" data-runtime-action="restart"')
   })
+
+  it('uses compact status badges in Runtime rows', () => {
+    expect(source).toContain('min-height:24px!important')
+    expect(source).toContain('padding:0 8px!important')
+    expect(source).toContain('font-size:11px!important')
+  })
 })

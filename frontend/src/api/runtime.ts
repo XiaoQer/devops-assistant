@@ -1,5 +1,5 @@
 import { client } from './client'
-import type { RuntimeEnvironmentOption, RuntimeExecSession, RuntimeInventory } from '../types'
+import type { RuntimeEnvironmentOption, RuntimeExecSession, RuntimeInventory, RuntimePodDetail } from '../types'
 
 
 const base = (projectId: number, applicationId: number, environment: string) => (
@@ -17,6 +17,11 @@ export const runtimeApi = {
     query?: string
     status?: string
   }) => client.get<never, RuntimeInventory>(`/projects/${projectId}/runtime`, { params }),
+  podDetail: (
+    projectId: number, applicationId: number, environment: string, pod: string,
+  ) => client.get<never, RuntimePodDetail>(
+    `${base(projectId, applicationId, environment)}/pods/${encodeURIComponent(pod)}`,
+  ),
   deploymentYaml: (
     projectId: number, applicationId: number, environment: string, deployment: string,
   ) => client.get<Record<string, unknown>>(
@@ -30,10 +35,11 @@ export const runtimeApi = {
     { confirmed: true, reason },
   ),
   podLogs: (
-    projectId: number, applicationId: number, environment: string, pod: string, container?: string,
+    projectId: number, applicationId: number, environment: string, pod: string,
+    container?: string, tail = 500,
   ) => client.get<never, { logs: string }>(
     `/projects/${projectId}/applications/${applicationId}/runtime/pods/${encodeURIComponent(pod)}/logs`,
-    { params: { environment, container } },
+    { params: { environment, container, tail } },
   ),
   podYaml: (
     projectId: number, applicationId: number, environment: string, pod: string,

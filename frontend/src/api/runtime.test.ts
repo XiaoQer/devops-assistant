@@ -23,6 +23,7 @@ describe('runtimeApi', () => {
       environment: 'prod', resource: 'pods', page: 2, page_size: 50,
       query: 'payments', status: 'Healthy',
     })
+    await runtimeApi.podDetail(7, 8, 'prod', 'payments-a')
     await runtimeApi.deploymentYaml(7, 8, 'prod', 'payments')
     await runtimeApi.podYaml(7, 8, 'prod', 'payments-a')
 
@@ -37,12 +38,27 @@ describe('runtimeApi', () => {
     )
     expect(client.get).toHaveBeenNthCalledWith(
       3,
-      '/projects/7/applications/8/environments/prod/runtime/deployments/payments/yaml',
+      '/projects/7/applications/8/environments/prod/runtime/pods/payments-a',
     )
     expect(client.get).toHaveBeenNthCalledWith(
       4,
+      '/projects/7/applications/8/environments/prod/runtime/deployments/payments/yaml',
+    )
+    expect(client.get).toHaveBeenNthCalledWith(
+      5,
       '/projects/7/applications/8/runtime/pods/payments-a/yaml',
       { params: { environment: 'prod' } },
+    )
+  })
+
+  it('passes selected container and bounded log tail to the Pod log endpoint', async () => {
+    client.get.mockResolvedValue({})
+
+    await runtimeApi.podLogs(7, 8, 'prod', 'payments-a', 'api', 1000)
+
+    expect(client.get).toHaveBeenCalledWith(
+      '/projects/7/applications/8/runtime/pods/payments-a/logs',
+      { params: { environment: 'prod', container: 'api', tail: 1000 } },
     )
   })
 

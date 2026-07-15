@@ -134,6 +134,11 @@ const router = createRouter({
           meta: { title: 'Runtime' },
         },
         {
+          path: 'projects/:projectId/runtime/environments/:environment/applications/:applicationId/pods/:podName',
+          component: () => import('../views/PodDetail.vue'),
+          meta: { title: 'Pod detail' },
+        },
+        {
           path: 'projects/:projectId/logs',
           component: () => import('../views/PipelineRuns.vue'),
           meta: { title: 'Logs' },

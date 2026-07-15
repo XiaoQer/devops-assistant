@@ -235,6 +235,37 @@ export interface RuntimeExecSession {
   websocket_url: string
 }
 
+export interface RuntimePodContainerDetail {
+  name: string
+  image: string
+  ready: boolean
+  restart_count: number
+  state: 'running' | 'waiting' | 'terminated' | 'unknown'
+  started_at?: string | null
+  reason?: string | null
+  message?: string | null
+  exit_code?: number | null
+}
+
+export interface RuntimePodDetail {
+  name: string
+  namespace: string
+  application_name: string
+  phase: string
+  status: string
+  ready: boolean
+  node?: string | null
+  pod_ip?: string | null
+  host_ip?: string | null
+  qos_class?: string | null
+  restart_count: number
+  created_at?: string | null
+  start_time?: string | null
+  containers: RuntimePodContainerDetail[]
+  conditions: Array<{ type: string; status: string; reason?: string | null; message?: string | null; last_transition_time?: string | null }>
+  events: Array<{ type: string; reason?: string | null; message?: string | null; count?: number | null; timestamp?: string | null }>
+}
+
 export interface ApplicationEnvironment {
   id: number
   application_id: number

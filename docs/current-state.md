@@ -76,7 +76,8 @@
   信息、Conditions、Containers、Events、按 Container/Tail 读取日志及 YAML。
   Deployment 滚动重启、Pod 删除与浏览器交互式终端均从
   Project/Application/Environment 上下文解析目标，要求显式确认并写入不含终端内容的运维审计；
-  终端还要求操作原因，Exec 票据单次使用并受有效期、空闲超时和并发上限保护。
+  需审批环境的终端仅对 Project owner/admin 开放并要求操作原因，免审批环境无需填写原因；
+  Exec 票据单次使用并受有效期、空闲超时和并发上限保护。
   Pod 详情页已采用 Container-first 运维工作区：紧凑资源头、Container 行级日志/终端入口、右侧
   Pod 信息栏，以及浅色 Conditions/Events 表格；删除 Pod 收进更多操作菜单。
 - 面向少量平台命令、基于规则的 AI 意图识别。

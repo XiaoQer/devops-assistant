@@ -37,7 +37,7 @@ def project_runtime(project_id):
 @bp.get("/<int:project_id>/runtime/environments")
 def runtime_environments(project_id):
     project = ProjectService().get(project_id)
-    return success(ProjectRuntimeService().environments(project))
+    return success(ProjectRuntimeService().environments(project, g.current_user))
 
 
 def runtime_context(project_id, app_id, environment):

@@ -68,13 +68,15 @@ class RuntimeExecRegistryTest(unittest.TestCase):
 class RuntimeExecServiceTest(unittest.TestCase):
     def setUp(self):
         self.context = SimpleNamespace(
-            project=SimpleNamespace(id=1),
+            project=SimpleNamespace(id=1, members=[SimpleNamespace(email="admin", role="admin", status="active")]),
             application=SimpleNamespace(id=2, name="payments"),
-            environment=SimpleNamespace(environment_name="prod"),
+            environment=SimpleNamespace(environment_name="prod", approval_required=True),
             cluster=SimpleNamespace(id=3),
             namespace="payments-prod",
         )
         self.actor = SimpleNamespace(id=7)
+        self.actor.username = "admin"
+        self.registry = RuntimeExecRegistry()
 
     def test_reason_is_required(self):
         with self.assertRaises(ApiError) as caught:
@@ -82,6 +84,30 @@ class RuntimeExecServiceTest(unittest.TestCase):
                 self.context, "payments-a", "api", self.actor, " "
             )
         self.assertEqual(caught.exception.code, "EXEC_REASON_REQUIRED")
+
+    def test_non_approval_environment_does_not_require_reason(self):
+        self.context.environment.approval_required = False
+        with patch("app.services.runtime_exec_service.KubernetesClusterService.client") as client, \
+                patch("app.services.runtime_exec_service.RuntimeOperationAudit.start") as start, \
+                patch("app.services.runtime_exec_service.db.session.add"), \
+                patch("app.services.runtime_exec_service.db.session.commit"):
+            client.return_value.list_application_pod_containers.return_value = ["api"]
+            result = RuntimeExecService(self.registry).create(
+                self.context, "payments-a", "api", self.actor, ""
+            )
+        self.assertTrue(result["ticket"])
+        self.assertEqual(start.call_args.kwargs["reason"], "免审批环境终端操作")
+
+    def test_approval_environment_requires_runtime_permission(self):
+        self.context.project.members = [
+            SimpleNamespace(email="developer@example.com", role="developer", status="active")
+        ]
+        self.actor.username = "developer@example.com"
+        with self.assertRaises(ApiError) as caught:
+            RuntimeExecService(self.registry).create(
+                self.context, "payments-a", "api", self.actor, "investigate incident"
+            )
+        self.assertEqual(caught.exception.code, "EXEC_PERMISSION_REQUIRED")
 
     @patch("app.services.runtime_exec_service.db.session.commit")
     @patch("app.services.runtime_exec_service.db.session.add")

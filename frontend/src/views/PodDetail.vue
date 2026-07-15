@@ -27,7 +27,7 @@
       </div>
       <section class="surface detail-card">
         <el-tabs v-model="activeTab" @tab-change="loadTabData">
-          <el-tab-pane label="Overview" name="overview"><PodOverview :pod="pod" @container-logs="openContainerLogs" @container-terminal="openContainerTerminal" /></el-tab-pane>
+          <el-tab-pane label="Overview" name="overview"><PodOverview :pod="pod" :terminal-enabled="terminalAllowed" @container-logs="openContainerLogs" @container-terminal="openContainerTerminal" /></el-tab-pane>
           <el-tab-pane label="Containers" name="containers">
             <div class="container-grid">
               <article v-for="container in pod.containers" :key="container.name" class="container-card">
@@ -80,17 +80,17 @@ const projectId=Number(route.params.projectId),applicationId=Number(route.params
 const environment=String(route.params.environment),podName=String(route.params.podName)
 const pod=ref<RuntimePodDetail>(),loading=ref(false),tabLoading=ref(false),error=ref('')
 const activeTab=ref('overview'),selectedContainer=ref(''),tail=ref(500),logs=ref(''),yaml=ref('')
-const terminalOpen=ref(false),session=ref<RuntimeExecSession>()
+const terminalOpen=ref(false),session=ref<RuntimeExecSession>(),terminalAllowed=ref(false),terminalApprovalRequired=ref(false)
 function openContainerLogs(name:string){selectedContainer.value=name;activeTab.value='logs';void loadLogs()}
-function openContainerTerminal(name:string){selectedContainer.value=name;void enterTerminal()}
+function openContainerTerminal(name:string){selectedContainer.value=name;if(!terminalAllowed.value){ElMessage.warning('当前环境没有终端操作权限');return}void enterTerminal()}
 function onHeaderAction(command:string){if(command==='delete-pod')void deletePod()}
 const runtimeLocation=computed(()=>({path:`/devcenter/projects/${projectId}/runtime`,query:{environment,resource:'pods'}}))
-async function loadDetail(){loading.value=true;try{pod.value=await runtimeApi.podDetail(projectId,applicationId,environment,podName);selectedContainer.value=selectedContainer.value||pod.value.containers[0]?.name||'';error.value=''}catch(e){error.value=e instanceof Error?e.message:'Pod 详情读取失败'}finally{loading.value=false}}
+async function loadDetail(){loading.value=true;try{const [detail,environments]=await Promise.all([runtimeApi.podDetail(projectId,applicationId,environment,podName),runtimeApi.environments(projectId)]);pod.value=detail;selectedContainer.value=selectedContainer.value||detail.containers[0]?.name||'';const meta=environments.find(item=>item.name===environment);terminalApprovalRequired.value=Boolean(meta?.approval_required);terminalAllowed.value=Boolean(meta?.terminal_allowed);error.value=''}catch(e){error.value=e instanceof Error?e.message:'Pod 详情读取失败'}finally{loading.value=false}}
 async function loadLogs(){if(!selectedContainer.value)return;tabLoading.value=true;try{logs.value=(await runtimeApi.podLogs(projectId,applicationId,environment,podName,selectedContainer.value,tail.value)).logs}catch(e){ElMessage.error(e instanceof Error?e.message:'日志读取失败')}finally{tabLoading.value=false}}
 async function loadYaml(){tabLoading.value=true;try{yaml.value=JSON.stringify(await runtimeApi.podYaml(projectId,applicationId,environment,podName),null,2)}catch(e){ElMessage.error(e instanceof Error?e.message:'YAML 读取失败')}finally{tabLoading.value=false}}
 async function copyLogs(){try{await navigator.clipboard.writeText(logs.value);ElMessage.success('日志已复制')}catch{ElMessage.error('日志复制失败')}}
 function loadTabData(name:string|number){if(name==='logs'&&!logs.value)void loadLogs();if(name==='yaml'&&!yaml.value)void loadYaml()}
-async function enterTerminal(){if(!selectedContainer.value){ElMessage.warning('请选择 Container');return}try{const {value:reason}=await ElMessageBox.prompt('请填写进入终端的操作原因。原因会写入审计记录。','确认进入 Pod 终端',{confirmButtonText:'确认并连接',cancelButtonText:'取消',inputPattern:/\S{3,}/,inputErrorMessage:'操作原因至少 3 个字符',type:isProduction(environment)?'warning':'info'});session.value=await runtimeApi.createExecSession(projectId,applicationId,environment,podName,selectedContainer.value,reason);terminalOpen.value=true}catch(e){if(e instanceof Error&&e.message!=='cancel')ElMessage.error(e.message)}}
+async function enterTerminal(){if(!selectedContainer.value){ElMessage.warning('请选择 Container');return}if(!terminalAllowed.value){ElMessage.warning('当前环境没有终端操作权限');return}try{let reason='';if(terminalApprovalRequired.value){const result=await ElMessageBox.prompt('请填写进入终端的操作原因。原因会写入审计记录。','确认进入 Pod 终端',{confirmButtonText:'确认并连接',cancelButtonText:'取消',inputPattern:/\S{3,}/,inputErrorMessage:'操作原因至少 3 个字符',type:isProduction(environment)?'warning':'info'});reason=result.value}session.value=await runtimeApi.createExecSession(projectId,applicationId,environment,podName,selectedContainer.value,reason);terminalOpen.value=true}catch(e){if(e instanceof Error&&e.message!=='cancel')ElMessage.error(e.message)}}
 async function deletePod(){try{await ElMessageBox.confirm(confirmationCopy('delete-pod',environment,podName),'确认 Runtime 操作',{type:isProduction(environment)?'error':'warning',confirmButtonText:'确认删除',cancelButtonText:'取消'});await runtimeApi.deletePod(projectId,applicationId,environment,podName);ElMessage.success('Pod 删除已提交');await router.push(runtimeLocation.value)}catch(e){if(e instanceof Error&&e.message!=='cancel')ElMessage.error(e.message)}}
 onMounted(loadDetail)
 </script>

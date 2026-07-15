@@ -8,13 +8,20 @@ from .kubernetes_cluster_service import KubernetesClusterService
 
 
 class RuntimeExecService:
+    EXEC_PERMISSION_ROLES = {"owner", "admin"}
+
     def __init__(self, registry):
         self.registry = registry
 
     def create(self, context, pod_name, container, actor, reason):
         reason = str(reason or "").strip()
-        if not reason:
+        approval_required = bool(getattr(context.environment, "approval_required", False))
+        if approval_required and not self.has_permission(context.project, actor):
+            raise ApiError("该审批环境没有终端操作权限", 403, "EXEC_PERMISSION_REQUIRED")
+        if approval_required and not reason:
             raise ApiError("进入终端前必须填写操作原因", 400, "EXEC_REASON_REQUIRED")
+        if not reason:
+            reason = "免审批环境终端操作"
         containers = KubernetesClusterService().client(
             context.cluster
         ).list_application_pod_containers(
@@ -60,3 +67,12 @@ class RuntimeExecService:
             "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
             "websocket_url": f"/api/runtime/exec/{ticket}",
         }
+
+    @classmethod
+    def has_permission(cls, project, actor):
+        username = str(getattr(actor, "username", "") or "").strip().lower()
+        for member in getattr(project, "members", []) or []:
+            email = str(getattr(member, "email", "") or "").strip().lower()
+            if email == username and getattr(member, "status", "active") == "active":
+                return getattr(member, "role", "") in cls.EXEC_PERMISSION_ROLES
+        return False

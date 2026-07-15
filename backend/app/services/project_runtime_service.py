@@ -3,18 +3,25 @@ from datetime import datetime, timezone
 from .application_runtime_service import ApplicationRuntimeService
 from .delivery_context_service import DeliveryContextService
 from app.utils.errors import ApiError
+from .runtime_exec_service import RuntimeExecService
 
 
 class ProjectRuntimeService:
     ERROR_MESSAGE = "暂时无法读取该环境的 Kubernetes 运行状态"
 
-    def environments(self, project):
+    def environments(self, project, actor=None):
         result = {}
         for application in project.applications:
             for environment in application.environments:
+                approval_required = bool(getattr(environment, "approval_required", False))
                 result.setdefault(environment.environment_name, {
                     "name": environment.environment_name,
                     "display_name": environment.display_name or environment.environment_name,
+                    "approval_required": approval_required,
+                    "terminal_allowed": (
+                        not approval_required
+                        or (actor is not None and RuntimeExecService.has_permission(project, actor))
+                    ),
                 })
         return [result[name] for name in sorted(result)]
 

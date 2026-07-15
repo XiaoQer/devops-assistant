@@ -202,6 +202,8 @@ export interface ProjectRuntimeOverview {
 export interface RuntimeEnvironmentOption {
   name: string
   display_name: string
+  approval_required?: boolean
+  terminal_allowed?: boolean
 }
 
 export interface RuntimeInventoryItem {

@@ -24,4 +24,11 @@ describe('PodDetail container-first layout contract', () => {
     expect(source).toContain('.detail-card :deep(.el-tabs__item.is-active){color:#175cd3')
     expect(source).toContain('.detail-card :deep(.el-tabs__active-bar){height:2px;background:#175cd3')
   })
+
+  it('does not force a reason for non-approval environments', () => {
+    expect(source).toContain('terminalApprovalRequired')
+    expect(source).toContain('if(terminalApprovalRequired.value)')
+    expect(source).toContain("let reason=''")
+    expect(source).toContain(':terminal-enabled="terminalAllowed"')
+  })
 })

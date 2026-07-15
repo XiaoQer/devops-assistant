@@ -10,6 +10,8 @@ describe('PodOverview container-first layout contract', () => {
     expect(source).toContain('data-runtime-action="container-terminal"')
     expect(source).toContain(':icon="Monitor"')
     expect(source).toContain('aria-label="打开终端"')
+    expect(source).toContain(':disabled="!terminalEnabled"')
+    expect(source).toContain('终端权限不足')
   })
 
   it('protects long container metadata from colliding with status and actions', () => {

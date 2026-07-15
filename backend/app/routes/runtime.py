@@ -8,6 +8,7 @@ from app.services.runtime_operation_service import RuntimeOperationService
 from app.services.runtime_exec_service import RuntimeExecService
 from app.utils.response import success
 from app.utils.validation import json_object
+from app.utils.errors import ApiError
 
 
 bp = Blueprint("runtime", __name__, url_prefix="/api/projects")
@@ -16,7 +17,26 @@ bp = Blueprint("runtime", __name__, url_prefix="/api/projects")
 @bp.get("/<int:project_id>/runtime")
 def project_runtime(project_id):
     project = ProjectService().get(project_id)
-    return success(ProjectRuntimeService().overview(project))
+    environment = str(request.args.get("environment") or "").strip()
+    if not environment:
+        raise ApiError("environment 为必填参数", 400, "VALIDATION_ERROR")
+    resource = str(request.args.get("resource") or "deployments").strip()
+    if resource not in {"deployments", "pods"}:
+        raise ApiError("不支持的 Runtime 资源类型", 400, "VALIDATION_ERROR")
+    page = int(request.args.get("page", 1))
+    page_size = int(request.args.get("page_size", 20))
+    if page < 1 or page_size not in {20, 50, 100}:
+        raise ApiError("分页参数无效", 400, "VALIDATION_ERROR")
+    return success(ProjectRuntimeService().inventory(
+        project, environment, resource, page, page_size,
+        request.args.get("query"), request.args.get("status"),
+    ))
+
+
+@bp.get("/<int:project_id>/runtime/environments")
+def runtime_environments(project_id):
+    project = ProjectService().get(project_id)
+    return success(ProjectRuntimeService().environments(project))
 
 
 def runtime_context(project_id, app_id, environment):

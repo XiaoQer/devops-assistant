@@ -19,6 +19,67 @@ def application(app_id, name, environments):
 
 
 class ProjectRuntimeServiceTest(unittest.TestCase):
+    def test_environment_directory_is_unique_and_sorted(self):
+        project = SimpleNamespace(applications=[
+            application(1, "api", [environment("prod", "Production", "api-prod")]),
+            application(2, "worker", [
+                environment("dev", "Development", "worker-dev"),
+                environment("prod", "Production", "worker-prod"),
+            ]),
+        ])
+
+        result = ProjectRuntimeService().environments(project)
+
+        self.assertEqual([item["name"] for item in result], ["dev", "prod"])
+
+    @patch("app.services.project_runtime_service.ApplicationRuntimeService.status")
+    @patch("app.services.project_runtime_service.DeliveryContextService.resolve")
+    def test_inventory_queries_only_requested_environment_and_paginates_after_filter(
+        self, resolve, status
+    ):
+        dev = environment("dev", "Development", "api-dev")
+        prod_a = environment("prod", "Production", "api-prod", "prod-cluster")
+        prod_b = environment("prod", "Production", "worker-prod", "prod-cluster")
+        apps = [application(1, "api", [dev, prod_a]), application(2, "worker", [prod_b])]
+        project = SimpleNamespace(applications=apps)
+        resolve.side_effect = lambda _project, app, _env: SimpleNamespace(
+            application=app,
+            environment=prod_a if app.name == "api" else prod_b,
+            cluster=SimpleNamespace(id=9, name="prod-cluster"),
+            namespace="api-prod" if app.name == "api" else "worker-prod",
+        )
+        status.side_effect = [
+            {"status": "Healthy", "deployment": {"name": "api", "replicas": 2, "ready_replicas": 2, "updated_replicas": 2, "available_replicas": 2, "images": ["api:v1"]}, "pods": [{"name": "api-a", "ready": True, "restart_count": 0}]},
+            {"status": "Degraded", "deployment": {"name": "worker", "replicas": 1, "ready_replicas": 0, "updated_replicas": 1, "available_replicas": 0, "images": ["worker:v1"]}, "pods": [{"name": "worker-a", "ready": False, "restart_count": 3}]},
+        ]
+
+        result = ProjectRuntimeService().inventory(
+            project, "prod", "deployments", 1, 20, query="work", status="Degraded"
+        )
+
+        self.assertEqual(resolve.call_count, 2)
+        self.assertEqual(result["environment"]["name"], "prod")
+        self.assertEqual([item["application_name"] for item in result["items"]], ["worker"])
+        self.assertEqual(result["pagination"], {"page": 1, "page_size": 20, "total": 1, "pages": 1})
+        self.assertEqual(result["summary"]["unhealthy_pods"], 1)
+
+    @patch("app.services.project_runtime_service.ApplicationRuntimeService.status")
+    @patch("app.services.project_runtime_service.DeliveryContextService.resolve")
+    def test_inventory_rejects_same_environment_across_different_clusters(
+        self, resolve, _status
+    ):
+        prod = environment("prod", "Production", "prod")
+        project = SimpleNamespace(applications=[application(1, "a", [prod]), application(2, "b", [prod])])
+        resolve.side_effect = [
+            SimpleNamespace(application=project.applications[0], environment=prod, cluster=SimpleNamespace(id=1, name="a")),
+            SimpleNamespace(application=project.applications[1], environment=prod, cluster=SimpleNamespace(id=2, name="b")),
+        ]
+
+        with self.assertRaises(Exception) as caught:
+            ProjectRuntimeService().inventory(project, "prod", "pods", 1, 20)
+
+        self.assertEqual(caught.exception.code, "RUNTIME_ENVIRONMENT_CONFLICT")
+
     @patch("app.services.project_runtime_service.ApplicationRuntimeService.status")
     @patch("app.services.project_runtime_service.DeliveryContextService.resolve")
     def test_groups_applications_by_environment_and_calculates_summary(

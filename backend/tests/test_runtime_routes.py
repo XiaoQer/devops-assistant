@@ -49,24 +49,42 @@ class RuntimeRoutesTest(unittest.TestCase):
         db.engine.dispose()
         self.context.pop()
 
-    @patch("app.routes.runtime.ProjectRuntimeService.overview")
-    def test_project_runtime_returns_unified_response(self, overview):
-        overview.return_value = {
-            "summary": {"environments": 0, "deployments": 0},
-            "environments": [],
+    @patch("app.routes.runtime.ProjectRuntimeService.inventory")
+    def test_project_runtime_returns_unified_response(self, inventory):
+        inventory.return_value = {
+            "summary": {"deployments": 0},
+            "items": [],
+            "pagination": {"page": 1, "page_size": 20, "total": 0, "pages": 0},
             "refreshed_at": "2026-07-15T00:00:00+00:00",
         }
 
-        response = self.client.get(f"/api/projects/{self.project_id}/runtime")
+        response = self.client.get(
+            f"/api/projects/{self.project_id}/runtime?environment=prod&resource=pods&page=2&page_size=50"
+        )
 
         self.assertEqual(response.status_code, 200)
         body = response.get_json()
         self.assertTrue(body["success"])
-        self.assertEqual(body["data"]["environments"], [])
+        self.assertEqual(body["data"]["items"], [])
         self.assertIn("timestamp", body)
         self.assertIn("trace_id", body)
-        overview.assert_called_once()
-        self.assertEqual(overview.call_args.args[0].id, self.project_id)
+        inventory.assert_called_once()
+        self.assertEqual(inventory.call_args.args[1:5], ("prod", "pods", 2, 50))
+
+    def test_project_runtime_requires_environment_and_bounds_page_size(self):
+        missing = self.client.get(f"/api/projects/{self.project_id}/runtime")
+        oversized = self.client.get(
+            f"/api/projects/{self.project_id}/runtime?environment=prod&page_size=101"
+        )
+
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(oversized.status_code, 400)
+
+    @patch("app.routes.runtime.ProjectRuntimeService.environments")
+    def test_runtime_environment_directory(self, environments):
+        environments.return_value = [{"name": "prod", "display_name": "Production"}]
+        response = self.client.get(f"/api/projects/{self.project_id}/runtime/environments")
+        self.assertEqual(response.get_json()["data"][0]["name"], "prod")
 
     def test_missing_project_is_not_found(self):
         response = self.client.get("/api/projects/999/runtime")

@@ -22,28 +22,17 @@
 
         <p v-if="build.error_message" class="build-error">{{ build.error_message }}</p>
 
-        <PipelineStepLogPanel
-          eyebrow="BUILD PIPELINE STEPS"
-          title="实际构建步骤"
+        <DeliveryExecutionPanel
+          :build="build"
+          :batch="batch"
+          :selected-execution-key="selectedExecutionKey"
           :steps="steps"
           :selected-step-id="selectedStepId"
-          :loading="loading"
+          :loading="executionLoading"
           :error="logsError"
-          :empty-description="build.pipeline_run_name ? 'PipelineRun 可能仍在初始化，请稍后刷新。' : '此构建没有关联 PipelineRun。'"
+          @select-execution="$emit('select-execution', $event)"
           @select-step="$emit('select-step', $event)"
           @retry="$emit('retry-logs')"
-        />
-
-        <BuildDeliveryTargets
-          :batch="batch"
-          :selected-target-id="selectedTargetId"
-          :steps="deploySteps"
-          :selected-step-id="selectedDeployStepId"
-          :loading="deployLoading"
-          :error="deployError"
-          @select-target="$emit('select-target', $event)"
-          @select-step="$emit('select-deploy-step', $event)"
-          @retry="$emit('retry-deploy-logs')"
         />
       </template>
     </el-skeleton>
@@ -53,31 +42,25 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import StatusBadge from '../common/StatusBadge.vue'
-import PipelineStepLogPanel from './PipelineStepLogPanel.vue'
-import BuildDeliveryTargets from './BuildDeliveryTargets.vue'
+import DeliveryExecutionPanel from './DeliveryExecutionPanel.vue'
 import type { BuildVersion, ReleaseBatch } from '../../types'
-import type { ExecutionStepDetail } from '../../features/build-explorer/state'
+import type { DeliveryExecutionKey, ExecutionStepDetail } from '../../features/build-explorer/state'
 
 defineProps<{
   build?: BuildVersion
   steps: ExecutionStepDetail[]
   selectedStepId?: string
   loading: boolean
+  executionLoading?: boolean
   logsError?: string
   batch?: ReleaseBatch
-  selectedTargetId?: number
-  deploySteps?: ExecutionStepDetail[]
-  selectedDeployStepId?: string
-  deployLoading?: boolean
-  deployError?: string
+  selectedExecutionKey: DeliveryExecutionKey
 }>()
 
 defineEmits<{
   'select-step': [stepId: string]
   'retry-logs': []
-  'select-target': [targetId: number]
-  'select-deploy-step': [stepId: string]
-  'retry-deploy-logs': []
+  'select-execution': [key: DeliveryExecutionKey]
 }>()
 
 const detailElement = ref<HTMLElement>()
@@ -98,9 +81,7 @@ function format(value?: string) {
   box-shadow: none;
 }
 
-.detail-head,
-.section-title,
-.log-panel > header {
+.detail-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -112,8 +93,7 @@ function format(value?: string) {
   border-bottom: 1px solid var(--border-soft);
 }
 
-.detail-head span,
-.section-title span {
+.detail-head span {
   color: var(--primary);
   font-size: 9px;
   font-weight: 800;
@@ -169,125 +149,6 @@ function format(value?: string) {
   font-size: 12px;
 }
 
-.steps-section {
-  padding: 18px 20px 20px;
-}
-
-.section-title h3 {
-  margin: 4px 0 0;
-  font-size: 16px;
-}
-
-.step-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.step-tab {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 12px;
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  background: var(--surface-soft);
-  color: var(--text-2);
-  text-align: left;
-  cursor: pointer;
-}
-
-.step-tab.active {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px var(--primary-soft);
-}
-
-.step-tab i {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--surface);
-  color: var(--success);
-  font-size: 11px;
-  font-style: normal;
-}
-
-.step-tab.status-failed i {
-  color: var(--danger);
-}
-
-.step-tab span,
-.step-tab strong,
-.step-tab small {
-  min-width: 0;
-  display: block;
-}
-
-.step-tab strong {
-  font-size: 12px;
-}
-
-.step-tab small {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.log-panel,
-.log-state {
-  margin-top: 12px;
-  border: 1px solid var(--border-soft);
-  border-radius: 11px;
-  overflow: hidden;
-}
-
-.log-panel > header {
-  align-items: center;
-  min-height: 44px;
-  padding: 0 14px;
-  background: var(--surface-soft);
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.log-panel pre {
-  min-height: 260px;
-  max-height: 460px;
-  margin: 0;
-  padding: 14px;
-  overflow: auto;
-  background: #111827;
-  color: #d7e0ef;
-  font: 11px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.log-state {
-  min-height: 150px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.log-state p {
-  margin: 6px 0 0;
-  font-size: 12px;
-}
-
-.error-state strong {
-  color: var(--danger);
-}
-
 @media (max-width: 1000px) {
   .build-facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -295,8 +156,7 @@ function format(value?: string) {
 }
 
 @media (max-width: 600px) {
-  .build-facts,
-  .step-tabs {
+  .build-facts {
     grid-template-columns: 1fr;
   }
 }

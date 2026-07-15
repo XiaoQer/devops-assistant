@@ -13,6 +13,30 @@ export interface ExecutionStepDetail {
 
 export type DeliveryExecutionKey = 'build' | `target:${number}`
 
+export interface DeliveryExecutionOption {
+  key: DeliveryExecutionKey
+  label: string
+  status: string
+  canLoadLogs: boolean
+}
+
+export function deliveryExecutionOptions(build: BuildVersion, batch?: ReleaseBatch): DeliveryExecutionOption[] {
+  return [
+    {
+      key: 'build',
+      label: '构建',
+      status: build.status,
+      canLoadLogs: Boolean(build.pipeline_run_name),
+    },
+    ...(batch?.targets || []).map(target => ({
+      key: `target:${target.id}` as const,
+      label: target.display_name || target.environment || `Environment #${target.environment_id}`,
+      status: target.status,
+      canLoadLogs: Boolean(target.pipeline_run_name),
+    })),
+  ]
+}
+
 export function targetIdFromExecutionKey(key: DeliveryExecutionKey) {
   if (key === 'build') return undefined
   const targetId = Number(key.slice('target:'.length))
@@ -123,11 +147,4 @@ export function targetExecutionState(target: ReleaseTarget) {
     canLoadLogs: Boolean(target.pipeline_run_name),
     description: descriptions[target.status] || target.status,
   }
-}
-
-export function defaultTargetId(targets: ReleaseTarget[]) {
-  return targets.find(target => target.status === 'Failed')?.id
-    || targets.find(target => activeStatuses.has(target.status) && Boolean(target.pipeline_run_name))?.id
-    || targets.find(target => Boolean(target.pipeline_run_name))?.id
-    || targets[0]?.id
 }

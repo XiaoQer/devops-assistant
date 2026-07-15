@@ -34,21 +34,16 @@
       <ApplicationBuildDetail
         ref="detailPanel"
         :build="selectedBuild"
-        :steps="steps"
-        :selected-step-id="selectedStepId"
+        :steps="visibleSteps"
+        :selected-step-id="visibleStepId"
         :loading="loadingDetail"
-        :logs-error="logsError"
+        :execution-loading="executionLoading"
+        :logs-error="visibleLogsError"
         :batch="selectedBatch"
-        :selected-target-id="selectedTargetId"
-        :deploy-steps="deploySteps"
-        :selected-deploy-step-id="selectedDeployStepId"
-        :deploy-loading="deployLoading"
-        :deploy-error="deployError"
-        @select-step="selectedStepId = $event"
+        :selected-execution-key="selectedExecutionKey"
+        @select-step="selectVisibleStep"
         @retry-logs="reloadLogs"
-        @select-target="selectTarget"
-        @select-deploy-step="selectedDeployStepId = $event"
-        @retry-deploy-logs="retryDeployLogs"
+        @select-execution="selectExecution"
       />
     </div>
 
@@ -88,12 +83,14 @@ import {
   canRefreshHistory,
   createRequestGate,
   defaultExecutionStepId,
-  defaultTargetId,
   explorerContentState,
   batchForBuild,
   hasActiveDelivery,
   normalizeExecutionSteps,
+  preserveExecutionKey,
   selectRequestedBuild,
+  targetIdFromExecutionKey,
+  type DeliveryExecutionKey,
   type ExecutionStepDetail,
 } from '../features/build-explorer/state'
 import type { Application, BuildVersion, CicdEnvironmentOption, ReleaseBatch } from '../types'
@@ -110,7 +107,7 @@ const selectedBuild = ref<BuildVersion>()
 const selectedBatch = ref<ReleaseBatch>()
 const steps = ref<ExecutionStepDetail[]>([])
 const selectedStepId = ref<string>()
-const selectedTargetId = ref<number>()
+const selectedExecutionKey = ref<DeliveryExecutionKey>('build')
 const deploySteps = ref<ExecutionStepDetail[]>([])
 const selectedDeployStepId = ref<string>()
 const invalidRequestedId = ref(false)
@@ -130,6 +127,16 @@ const contentState = computed(() => explorerContentState(
   loadingContext.value,
   Boolean(contextError.value),
 ))
+const visibleSteps = computed(() => selectedExecutionKey.value === 'build' ? steps.value : deploySteps.value)
+const visibleStepId = computed(() => selectedExecutionKey.value === 'build'
+  ? selectedStepId.value
+  : selectedDeployStepId.value)
+const visibleLogsError = computed(() => selectedExecutionKey.value === 'build'
+  ? logsError.value
+  : deployError.value)
+const executionLoading = computed(() => selectedExecutionKey.value === 'build'
+  ? loadingDetail.value
+  : deployLoading.value)
 let requestGeneration = 0
 let refreshTimer: number | undefined
 
@@ -162,7 +169,7 @@ async function loadContext() {
       approval_required: item.approval_required,
     }))
     releaseBatches.value = batchItems
-    await resolveRouteSelection()
+    await resolveRouteSelection(selectedBuild.value?.id === requestedBuildId())
   } catch (error) {
     if (contextGate.isCurrent(contextGeneration)) {
       contextError.value = (error as Error).message
@@ -173,7 +180,7 @@ async function loadContext() {
   }
 }
 
-async function resolveRouteSelection() {
+async function resolveRouteSelection(preserveSelection = false) {
   const requestedId = requestedBuildId()
   const result = selectRequestedBuild(builds.value, requestedId)
   invalidRequestedId.value = result.invalidRequestedId
@@ -182,26 +189,29 @@ async function resolveRouteSelection() {
     selectedBatch.value = undefined
     steps.value = []
     selectedStepId.value = undefined
-    resetDeploySelection()
+    resetDeployState()
+    selectedExecutionKey.value = 'build'
     stopPolling()
     return
   }
   if (requestedId === undefined) {
     await router.replace(buildExplorerPath(projectId, applicationId, result.build.id))
-    await loadSelectedBuild(result.build.id)
+    await loadSelectedBuild(result.build.id, preserveSelection)
     return
   }
-  await loadSelectedBuild(result.build.id)
+  await loadSelectedBuild(result.build.id, preserveSelection)
 }
 
-async function loadSelectedBuild(buildId: number) {
+async function loadSelectedBuild(buildId: number, preserveSelection = false) {
   const generation = ++requestGeneration
+  const previousExecutionKey = selectedExecutionKey.value
   loadingDetail.value = true
   logsError.value = ''
   steps.value = []
   selectedStepId.value = undefined
   selectedBatch.value = undefined
-  resetDeploySelection()
+  resetDeployState()
+  if (!preserveSelection) selectedExecutionKey.value = 'build'
   try {
     const build = await applicationApi.buildVersion(projectId, applicationId, buildId)
     if (generation !== requestGeneration) return
@@ -209,7 +219,10 @@ async function loadSelectedBuild(buildId: number) {
     const index = builds.value.findIndex(item => item.id === build.id)
     if (index >= 0) builds.value.splice(index, 1, build)
     selectedBatch.value = batchForBuild(releaseBatches.value, build.id)
-    const targetId = defaultTargetId(selectedBatch.value?.targets || [])
+    selectedExecutionKey.value = preserveSelection
+      ? preserveExecutionKey(previousExecutionKey, selectedBatch.value)
+      : 'build'
+    const targetId = targetIdFromExecutionKey(selectedExecutionKey.value)
     const requests: Promise<void>[] = []
     if (build.pipeline_run_name) requests.push(loadLogs(build, generation))
     if (targetId !== undefined) requests.push(loadTargetLogs(targetId))
@@ -228,9 +241,8 @@ async function loadSelectedBuild(buildId: number) {
   }
 }
 
-function resetDeploySelection() {
+function resetDeployState() {
   targetGate.next()
-  selectedTargetId.value = undefined
   deploySteps.value = []
   selectedDeployStepId.value = undefined
   deployError.value = ''
@@ -239,7 +251,6 @@ function resetDeploySelection() {
 
 async function loadTargetLogs(targetId: number) {
   const generation = targetGate.next()
-  selectedTargetId.value = targetId
   deploySteps.value = []
   selectedDeployStepId.value = undefined
   deployError.value = ''
@@ -261,13 +272,21 @@ async function loadTargetLogs(targetId: number) {
   }
 }
 
-function selectTarget(targetId: number) {
-  if (selectedTargetId.value === targetId) return
+function selectExecution(key: DeliveryExecutionKey) {
+  if (selectedExecutionKey.value === key) return
+  selectedExecutionKey.value = key
+  const targetId = targetIdFromExecutionKey(key)
+  if (targetId === undefined) {
+    targetGate.next()
+    deployLoading.value = false
+    return
+  }
   void loadTargetLogs(targetId)
 }
 
-function retryDeployLogs() {
-  if (selectedTargetId.value !== undefined) void loadTargetLogs(selectedTargetId.value)
+function selectVisibleStep(stepId: string) {
+  if (selectedExecutionKey.value === 'build') selectedStepId.value = stepId
+  else selectedDeployStepId.value = stepId
 }
 
 async function loadLogs(build: BuildVersion, generation: number) {
@@ -307,14 +326,16 @@ async function refreshSelected() {
       || !canApplyBuildRefresh(buildId, requestedBuildId(), selectedBuild.value?.id)) return
     builds.value = buildItems
     releaseBatches.value = batchItems
-    if (builds.value.some(item => item.id === buildId)) await loadSelectedBuild(buildId)
+    if (builds.value.some(item => item.id === buildId)) await loadSelectedBuild(buildId, true)
   } catch (error) {
     if (contextGate.isCurrent(contextGeneration)) ElMessage.error((error as Error).message)
   }
 }
 
 function reloadLogs() {
-  if (selectedBuild.value) void loadSelectedBuild(selectedBuild.value.id)
+  const targetId = targetIdFromExecutionKey(selectedExecutionKey.value)
+  if (targetId !== undefined) void loadTargetLogs(targetId)
+  else if (selectedBuild.value) void loadSelectedBuild(selectedBuild.value.id, true)
 }
 
 function refresh() {

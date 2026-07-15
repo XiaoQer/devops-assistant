@@ -1,6 +1,6 @@
 <template>
   <section class="step-log-panel">
-    <div class="section-title">
+    <div v-if="showHeader" class="section-title">
       <div><span>{{ eyebrow }}</span><h3>{{ title }}</h3></div>
       <el-button v-if="error" text @click="$emit('retry')">重新加载日志</el-button>
     </div>
@@ -26,6 +26,7 @@
       <div v-if="error" class="log-state error-state">
         <strong>执行日志暂时不可用</strong>
         <p>{{ error }}</p>
+        <el-button v-if="!showHeader" text @click="$emit('retry')">重新加载日志</el-button>
       </div>
       <div v-else-if="selectedStep" class="log-panel">
         <header><span>{{ selectedStep.label }}</span><b>{{ selectedStep.status }}</b></header>
@@ -51,10 +52,12 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   error?: string
   emptyDescription?: string
+  showHeader?: boolean
 }>(), {
   loading: false,
   error: '',
   emptyDescription: 'PipelineRun 可能仍在初始化，请稍后刷新。',
+  showHeader: true,
 })
 
 defineEmits<{

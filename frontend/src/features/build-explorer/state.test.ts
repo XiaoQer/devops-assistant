@@ -5,7 +5,7 @@ import {
   canApplyBuildRefresh,
   canRefreshHistory,
   createRequestGate,
-  defaultTargetId,
+  deliveryExecutionOptions,
   batchForBuild,
   defaultExecutionStepId,
   explorerContentState,
@@ -215,23 +215,6 @@ describe('build explorer state', () => {
     expect(deploying).toEqual({ canLoadLogs: true, description: '部署中' })
   })
 
-  it('selects failed, active, runnable, then first environment target', () => {
-    const targets = [
-      { id: 1, status: 'Succeeded', pipeline_run_name: 'deploy-dev' },
-      { id: 2, status: 'Failed', pipeline_run_name: 'deploy-qa' },
-    ] as ReleaseTarget[]
-    expect(defaultTargetId(targets)).toBe(2)
-    expect(defaultTargetId([
-      { id: 1, status: 'Succeeded', pipeline_run_name: 'deploy-dev' },
-      { id: 2, status: 'Deploying', pipeline_run_name: 'deploy-qa' },
-    ] as ReleaseTarget[])).toBe(2)
-    expect(defaultTargetId([
-      { id: 1, status: 'WaitingApproval' },
-      { id: 2, status: 'Succeeded', pipeline_run_name: 'deploy-qa' },
-    ] as ReleaseTarget[])).toBe(2)
-    expect(defaultTargetId([{ id: 1, status: 'WaitingApproval' }] as ReleaseTarget[])).toBe(1)
-  })
-
   it('models build and target execution keys without an implicit target request', () => {
     expect(targetIdFromExecutionKey('build')).toBeUndefined()
     expect(targetIdFromExecutionKey('target:7')).toBe(7)
@@ -244,5 +227,20 @@ describe('build explorer state', () => {
     expect(preserveExecutionKey('target:7', batch)).toBe('target:7')
     expect(preserveExecutionKey('target:9', batch)).toBe('build')
     expect(preserveExecutionKey('build', batch)).toBe('build')
+  })
+
+  it('presents build first and environments in release target order', () => {
+    const selectedBuild = { ...build(42), status: 'Succeeded', pipeline_run_name: 'build-42' }
+    const batch = {
+      targets: [
+        { id: 7, display_name: 'QA', status: 'Succeeded', pipeline_run_name: 'deploy-qa' },
+        { id: 8, display_name: 'PROD', status: 'WaitingApproval' },
+      ],
+    } as ReleaseBatch
+    expect(deliveryExecutionOptions(selectedBuild, batch)).toEqual([
+      { key: 'build', label: '构建', status: 'Succeeded', canLoadLogs: true },
+      { key: 'target:7', label: 'QA', status: 'Succeeded', canLoadLogs: true },
+      { key: 'target:8', label: 'PROD', status: 'WaitingApproval', canLoadLogs: false },
+    ])
   })
 })

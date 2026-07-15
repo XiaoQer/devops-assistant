@@ -119,11 +119,6 @@ const router = createRouter({
           meta: { title: 'Pipeline detail' },
         },
         {
-          path: 'projects/:projectId/releases',
-          component: () => import('../views/ReleaseCenter.vue'),
-          meta: { title: 'Releases' },
-        },
-        {
           path: 'projects/:projectId/approvals',
           component: () => import('../views/Approvals.vue'),
           meta: { title: 'Approvals' },
@@ -137,11 +132,6 @@ const router = createRouter({
           path: 'projects/:projectId/runtime/environments/:environment/applications/:applicationId/pods/:podName',
           component: () => import('../views/PodDetail.vue'),
           meta: { title: 'Pod detail' },
-        },
-        {
-          path: 'projects/:projectId/logs',
-          component: () => import('../views/PipelineRuns.vue'),
-          meta: { title: 'Logs' },
         },
       ],
     },

@@ -100,15 +100,6 @@ export function useCommandCenter() {
         run: () => router.push(projectPath('pipelines')),
       },
       {
-        id: 'go-releases',
-        title: 'Open releases',
-        description: '查看交付活动流与回滚入口',
-        section: 'Navigate',
-        keywords: ['releases', 'deployments', 'rollback', '发布', '回滚', 'open'],
-        shortcut: 'G R',
-        run: () => router.push(projectPath('releases')),
-      },
-      {
         id: 'go-approvals',
         title: 'Open approvals',
         description: '处理待审批的生产变更',
@@ -148,7 +139,7 @@ export function useCommandCenter() {
         description: '跳转到发布中心执行回滚',
         section: 'Operate',
         keywords: ['rollback', 'order service', '回滚'],
-        run: () => router.push(projectPath('releases')),
+        run: () => router.push(projectPath('pipelines')),
       },
       {
         id: 'deploy-payment',
@@ -156,7 +147,7 @@ export function useCommandCenter() {
         description: '跳转到发布中心继续部署流程',
         section: 'Operate',
         keywords: ['deploy', 'payment service', '发布', '部署'],
-        run: () => router.push(projectPath('releases')),
+        run: () => router.push(projectPath('pipelines')),
       },
       {
         id: 'toggle-theme',
@@ -190,7 +181,7 @@ export function useCommandCenter() {
   const recommendedCommands = computed(() => {
     const failedCount = applicationStore.items.filter(app => app.latest_execution?.status === 'Failed').length
     const recommendedIds = failedCount
-      ? ['review-failures', 'go-pipelines', 'go-releases', 'go-approvals']
+      ? ['review-failures', 'go-pipelines', 'go-approvals']
       : ['new-application', 'go-dashboard', 'go-applications', 'toggle-theme']
 
     return recommendedIds
@@ -217,7 +208,6 @@ export function useCommandCenter() {
       '/applications': 'go-applications',
       '/applications/new': 'new-application',
       '/pipelines': 'go-pipelines',
-      '/releases': 'go-releases',
       '/approvals': 'go-approvals',
       '/settings/registries': 'go-registries',
     }

@@ -31,7 +31,6 @@
         </div>
         <div class="summary-actions">
           <el-button @click="openPipelines">查看全部 Pipeline</el-button>
-          <el-button @click="openReleases">查看全部 Releases</el-button>
           <el-button type="primary" @click="router.push(`/project-center/projects/${project.id}`)">进入 Project 模块</el-button>
         </div>
       </section>
@@ -102,7 +101,6 @@
             <h3>Recent releases</h3>
             <p>按项目查看最近发布活动，并快速跳转到对应的 Pipeline 日志。</p>
           </div>
-          <el-button @click="openReleases">查看全部</el-button>
         </div>
         <div v-if="releases.length" class="release-list">
           <article v-for="release in releases" :key="release.id" class="release-card">
@@ -185,10 +183,6 @@ async function refresh() {
 
 function openPipelines() {
   router.push(`/devcenter/projects/${projectId.value}/pipelines`)
-}
-
-function openReleases() {
-  router.push(`/devcenter/projects/${projectId.value}/releases`)
 }
 
 function format(value?: string) {

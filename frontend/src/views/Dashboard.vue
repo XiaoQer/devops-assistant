@@ -105,10 +105,6 @@
             <strong>Create application</strong>
             <span>从仓库创建一个新的服务工作区</span>
           </button>
-          <button @click="$router.push(`/devcenter/projects/${projectId}/releases`)" :disabled="!projectId">
-            <strong>Review releases</strong>
-            <span>查看发布历史、回滚与交付轨迹</span>
-          </button>
           <button @click="$router.push(`/devcenter/projects/${projectId}/approvals`)" :disabled="!projectId">
             <strong>Handle approvals</strong>
             <span>快速处理 Production 变更申请</span>
@@ -160,8 +156,8 @@ const suggestedActions = computed(() => [
     tag: failedCount.value ? 'Incident' : 'Healthy',
     title: failedCount.value ? `有 ${failedCount.value} 条失败执行等待处理` : '当前没有失败执行',
     description: failedCount.value ? '优先查看最近失败的 Pipeline 与发布记录，缩短恢复时间。' : '你可以继续推进今天的发布计划。',
-    cta: failedCount.value ? '查看 pipelines' : '查看发布中心',
-    run: () => router.push(failedCount.value ? `/devcenter/projects/${projectId.value}/pipelines` : `/devcenter/projects/${projectId.value}/releases`),
+    cta: '查看 pipelines',
+    run: () => router.push(`/devcenter/projects/${projectId.value}/pipelines`),
   },
   {
     tag: runningCount.value ? 'Live' : 'Flow',
@@ -199,7 +195,7 @@ const activityFeed = computed(() => {
     status: item.deploy_status,
     tone: item.deploy_status === 'Failed' ? 'danger' : item.deploy_status === 'Succeeded' ? 'success' : 'warning',
     time: formatTime(item.created_at),
-    path: `/devcenter/projects/${projectId.value}/releases`,
+    path: `/devcenter/projects/${projectId.value}/pipelines`,
   }))
 
   return [...pipelineActivities, ...releaseActivities]

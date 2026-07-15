@@ -30,10 +30,6 @@ export function devCenterPipelinePath(projectId: number | string, pipelineRunNam
   return `${devCenterPipelinesPath(projectId)}/${encodeURIComponent(pipelineRunName)}`
 }
 
-export function devCenterReleasesPath(projectId: number | string) {
-  return `${devCenterProjectPath(projectId)}/releases`
-}
-
 export function devCenterApprovalsPath(projectId: number | string) {
   return `${devCenterProjectPath(projectId)}/approvals`
 }

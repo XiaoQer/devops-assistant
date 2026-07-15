@@ -55,7 +55,6 @@
         </div>
         <div class="table-actions">
           <el-button @click="router.push(`/devcenter/projects/${projectId}/pipelines`)">查看 Pipeline</el-button>
-          <el-button @click="router.push(`/devcenter/projects/${projectId}/releases`)">发布历史</el-button>
         </div>
       </div>
 

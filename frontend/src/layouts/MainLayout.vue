@@ -93,7 +93,6 @@ import { useProjectStore } from '@/stores/project'
 import IconDashboard from '../components/icons/IconDashboard.vue'
 import IconApplication from '../components/icons/IconApplication.vue'
 import IconPipeline from '../components/icons/IconPipeline.vue'
-import IconRelease from '../components/icons/IconRelease.vue'
 import IconApproval from '../components/icons/IconApproval.vue'
 import IconRegistry from '../components/icons/IconRegistry.vue'
 import IconTheme from '@/components/icons/IconTheme.vue'
@@ -110,7 +109,6 @@ const nav = computed(() => [
   { name: 'Projects', path: '/projects', icon: IconApplication },
   { name: 'Applications', path: projectPath('applications'), icon: IconApplication },
   { name: 'Pipelines', path: projectPath('pipelines'), icon: IconPipeline },
-  { name: 'Releases', path: projectPath('releases'), icon: IconRelease },
   { name: 'Approvals', path: projectPath('approvals'), icon: IconApproval },
 ])
 
@@ -135,7 +133,6 @@ const currentSection = computed(() => {
   if (route.path.startsWith('/projects')) return 'Project'
   if (route.path.startsWith('/applications')) return 'Software delivery'
   if (route.path.startsWith('/pipelines')) return 'Execution'
-  if (route.path.startsWith('/releases')) return 'Release management'
   if (route.path.startsWith('/approvals')) return 'Governance'
   return 'AI Native Software OS'
 })

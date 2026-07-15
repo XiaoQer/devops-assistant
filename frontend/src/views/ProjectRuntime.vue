@@ -41,7 +41,7 @@ import { confirmationCopy, isProduction } from '../components/runtime/runtime-vi
 const route=useRoute(), router=useRouter(), projectId=Number(route.params.projectId)
 const {environments,inventory,environment,resource,query,status,page,pageSize,loading,refreshError,autoRefresh,initialize,refresh}=useProjectRuntime(projectId,route,router)
 const summary=computed(()=>inventory.value?.summary||{deployments:0,healthy_pods:0,unhealthy_pods:0,restart_count:0})
-const statuses=computed(()=>resource.value==='pods'?['Running','Pending','Succeeded','Failed','Unknown']:['Healthy','Progressing','Degraded','Failed','Unknown'])
+const statuses=computed(()=>resource.value==='pods'?['Running','Pending','Succeeded','Failed','CrashLoopBackOff','ImagePullBackOff','ErrImagePull','Unknown']:['Healthy','Progressing','Degraded','Failed','Unknown'])
 const drawer=ref(false),drawerTitle=ref(''),drawerContent=ref(''),drawerLoading=ref(false)
 async function openYaml(row:RuntimeInventoryItem){if(!row.deployment)return;drawer.value=true;drawerLoading.value=true;drawerTitle.value=`${row.deployment.name} · YAML`;try{drawerContent.value=JSON.stringify(await runtimeApi.deploymentYaml(projectId,row.application_id,environment.value,row.deployment.name),null,2)}finally{drawerLoading.value=false}}
 async function restart(row:RuntimeInventoryItem){if(!row.deployment)return;await ElMessageBox.confirm(confirmationCopy('restart',environment.value,row.deployment.name),'确认 Runtime 操作',{type:isProduction(environment.value)?'error':'warning'});await runtimeApi.restartDeployment(projectId,row.application_id,environment.value,row.deployment.name);ElMessage.success('Deployment 重启已提交');await refresh()}

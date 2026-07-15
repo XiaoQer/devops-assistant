@@ -17,12 +17,14 @@
       <el-table-column label="Containers" width="110"><template #default="{ row }">{{ row.containers?.length || 0 }}</template></el-table-column>
       <el-table-column label="重启" width="90" prop="restart_count" />
       <el-table-column label="Node" min-width="180"><template #default="{ row }">{{ row.node || '—' }}</template></el-table-column>
+      <el-table-column label="创建时间" width="180"><template #default="{ row }">{{ formatRuntimeTime(row.created_at) }}</template></el-table-column>
     </template>
   </el-table>
 </template>
 <script setup lang="ts">
 import type { RuntimeInventoryItem } from '../../types'
 import StatusBadge from '../common/StatusBadge.vue'
+import { formatRuntimeTime } from './pod-detail-view-model'
 defineProps<{ items: RuntimeInventoryItem[]; resource: 'deployments' | 'pods' }>()
 defineEmits<{ yaml: [row: RuntimeInventoryItem]; restart: [row: RuntimeInventoryItem]; 'pod-detail': [row: RuntimeInventoryItem] }>()
 const rowKey = (row: RuntimeInventoryItem) => `${row.resource}:${row.application_id}:${row.name || row.deployment?.name || ''}`

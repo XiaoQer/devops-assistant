@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from kubernetes import client, config
 from kubernetes.client import ApiClient
+from kubernetes.stream import stream as kubernetes_stream
 
 
 class KubernetesService:
@@ -352,6 +353,33 @@ class KubernetesService:
         data = ApiClient().sanitize_for_serialization(pod)
         data.get("metadata", {}).pop("managedFields", None)
         return data
+
+    def list_application_pod_containers(self, pod_name, namespace, app_name):
+        pod = self._read_application_pod(pod_name, namespace, app_name)
+        return [container.name for container in (pod.spec.containers or [])]
+
+    def open_application_pod_exec(
+        self, pod_name, namespace, app_name, container
+    ):
+        containers = self.list_application_pod_containers(
+            pod_name, namespace, app_name
+        )
+        if container not in containers:
+            from app.utils.errors import ApiError
+
+            raise ApiError("Container 不存在", 404, "CONTAINER_NOT_FOUND")
+        return kubernetes_stream(
+            self.core_api.connect_get_namespaced_pod_exec,
+            pod_name,
+            namespace,
+            container=container,
+            command=["/bin/sh"],
+            stderr=True,
+            stdin=True,
+            stdout=True,
+            tty=True,
+            _preload_content=False,
+        )
 
     def get_application_deployment_manifest(
         self, deployment_name, namespace, app_name

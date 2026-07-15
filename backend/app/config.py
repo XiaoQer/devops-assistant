@@ -30,3 +30,11 @@ class Config:
         "CORS_ORIGINS",
         "http://localhost:5173",
     )
+    RUNTIME_EXEC_TICKET_TTL_SECONDS = int(
+        os.getenv("RUNTIME_EXEC_TICKET_TTL_SECONDS", "60")
+    )
+    RUNTIME_EXEC_IDLE_TIMEOUT_SECONDS = int(
+        os.getenv("RUNTIME_EXEC_IDLE_TIMEOUT_SECONDS", "900")
+    )
+    RUNTIME_EXEC_MAX_PER_USER = int(os.getenv("RUNTIME_EXEC_MAX_PER_USER", "2"))
+    RUNTIME_EXEC_MAX_PER_TARGET = int(os.getenv("RUNTIME_EXEC_MAX_PER_TARGET", "1"))

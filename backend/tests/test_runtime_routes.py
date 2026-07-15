@@ -109,6 +109,38 @@ class RuntimeRoutesTest(unittest.TestCase):
         self.assertEqual(response.get_json()["data"]["kind"], "Deployment")
         manifest.assert_called_once_with(context, "payments-api")
 
+    @patch("app.routes.runtime.RuntimeExecService.create")
+    @patch("app.routes.runtime.DeliveryContextService.resolve")
+    def test_exec_session_requires_reason_and_returns_ticket(self, resolve, create):
+        context = object()
+        resolve.return_value = context
+        create.return_value = {
+            "ticket": "short-lived",
+            "expires_at": "2026-07-15T00:01:00+00:00",
+            "websocket_url": "/api/runtime/exec/short-lived",
+        }
+        path = (
+            f"/api/projects/{self.project_id}/applications/{self.application_id}"
+            "/environments/prod/runtime/pods/payments-api-a/exec-sessions"
+        )
+
+        response = csrf_post(
+            self.client,
+            path,
+            self.csrf_token,
+            json={
+                "confirmed": True,
+                "container": "api",
+                "reason": "investigate incident",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.get_json()["data"]["ticket"], "short-lived")
+        self.assertEqual(create.call_args.args[0], context)
+        self.assertEqual(create.call_args.args[1:3], ("payments-api-a", "api"))
+        self.assertEqual(create.call_args.args[4], "investigate incident")
+
 
 if __name__ == "__main__":
     unittest.main()

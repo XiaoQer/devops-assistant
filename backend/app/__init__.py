@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from .config import Config
-from .extensions import db, migrate
+from .extensions import db, migrate, sock
 from .models import User
 from .routes import (
     applications_bp, health_bp, pipelines_bp, environments_bp, releases_bp,
@@ -23,6 +23,8 @@ from .utils.errors import ApiError
 from .utils.response import failure
 from .services.release_service import ReleaseService
 from .services.auth_service import AuthService
+from .runtime_exec_registry import RuntimeExecRegistry
+from .routes import runtime_exec as _runtime_exec_routes
 
 
 def create_app(config_class=Config):
@@ -35,6 +37,19 @@ def create_app(config_class=Config):
     )
     db.init_app(app)
     migrate.init_app(app, db)
+    sock.init_app(app)
+    app.extensions["runtime_exec_registry"] = RuntimeExecRegistry(
+        ticket_ttl=app.config.get(
+            "RUNTIME_EXEC_TICKET_TTL_SECONDS",
+            Config.RUNTIME_EXEC_TICKET_TTL_SECONDS,
+        ),
+        max_per_user=app.config.get(
+            "RUNTIME_EXEC_MAX_PER_USER", Config.RUNTIME_EXEC_MAX_PER_USER
+        ),
+        max_per_target=app.config.get(
+            "RUNTIME_EXEC_MAX_PER_TARGET", Config.RUNTIME_EXEC_MAX_PER_TARGET
+        ),
+    )
 
     # 仅供 Docker Compose 本地测试；生产环境应始终使用 Alembic migration。
     if app.config["AUTO_CREATE_SCHEMA"]:

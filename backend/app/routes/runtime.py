@@ -1,10 +1,11 @@
-from flask import Blueprint, g, request
+from flask import Blueprint, current_app, g, request
 
 from app.services.application_service import ApplicationService
 from app.services.delivery_context_service import DeliveryContextService
 from app.services.project_runtime_service import ProjectRuntimeService
 from app.services.project_service import ProjectService
 from app.services.runtime_operation_service import RuntimeOperationService
+from app.services.runtime_exec_service import RuntimeExecService
 from app.utils.response import success
 from app.utils.validation import json_object
 
@@ -67,3 +68,26 @@ def delete_pod(project_id, app_id, environment, pod_name):
         str(payload.get("reason") or "").strip() or None,
     )
     return success(result, "Pod 删除已提交")
+
+
+@bp.post(
+    "/<int:project_id>/applications/<int:app_id>/environments/<environment>"
+    "/runtime/pods/<pod_name>/exec-sessions"
+)
+def create_exec_session(project_id, app_id, environment, pod_name):
+    payload = json_object(request.get_json(silent=True), required=True)
+    if payload.get("confirmed") is not True:
+        from app.utils.errors import ApiError
+
+        raise ApiError("终端操作需要显式确认", 409, "CONFIRMATION_REQUIRED")
+    context = runtime_context(project_id, app_id, environment)
+    result = RuntimeExecService(
+        current_app.extensions["runtime_exec_registry"]
+    ).create(
+        context,
+        pod_name,
+        str(payload.get("container") or "").strip(),
+        g.current_user,
+        payload.get("reason"),
+    )
+    return success(result, "终端会话已创建", 201)

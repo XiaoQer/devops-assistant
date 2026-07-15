@@ -17,7 +17,7 @@ from .extensions import db, migrate
 from .models import User
 from .routes import (
     applications_bp, health_bp, pipelines_bp, environments_bp, releases_bp,
-    approvals_bp, ai_bp, projects_bp, auth_bp,
+    approvals_bp, ai_bp, projects_bp, auth_bp, runtime_bp,
 )
 from .utils.errors import ApiError
 from .utils.response import failure
@@ -50,6 +50,7 @@ def create_app(config_class=Config):
     app.register_blueprint(ai_bp)
     app.register_blueprint(projects_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(runtime_bp)
 
     @app.before_request
     def attach_trace_id():

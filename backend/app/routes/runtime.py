@@ -57,6 +57,17 @@ def pod_detail(project_id, app_id, environment, pod_name):
 
 @bp.get(
     "/<int:project_id>/applications/<int:app_id>/environments/<environment>"
+    "/runtime/deployments/<deployment_name>/pods"
+)
+def deployment_pods(project_id, app_id, environment, deployment_name):
+    context = runtime_context(project_id, app_id, environment)
+    return success(
+        ApplicationRuntimeService().deployment_pods(context, deployment_name)
+    )
+
+
+@bp.get(
+    "/<int:project_id>/applications/<int:app_id>/environments/<environment>"
     "/runtime/deployments/<deployment_name>/yaml"
 )
 def deployment_yaml(project_id, app_id, environment, deployment_name):

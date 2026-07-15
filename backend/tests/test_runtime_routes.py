@@ -127,6 +127,26 @@ class RuntimeRoutesTest(unittest.TestCase):
         self.assertEqual(response.get_json()["data"]["kind"], "Deployment")
         manifest.assert_called_once_with(context, "payments-api")
 
+    @patch("app.routes.runtime.ApplicationRuntimeService.deployment_pods")
+    @patch("app.routes.runtime.DeliveryContextService.resolve")
+    def test_deployment_pods_use_application_environment_context(
+        self, resolve, deployment_pods
+    ):
+        context = object()
+        resolve.return_value = context
+        deployment_pods.return_value = [{"name": "payments-api-a"}]
+
+        response = self.client.get(
+            f"/api/projects/{self.project_id}/applications/{self.application_id}"
+            "/environments/prod/runtime/deployments/payments-api/pods"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertTrue(body["success"])
+        self.assertEqual(body["data"], [{"name": "payments-api-a"}])
+        deployment_pods.assert_called_once_with(context, "payments-api")
+
     @patch("app.routes.runtime.ApplicationRuntimeService.pod_detail")
     @patch("app.routes.runtime.DeliveryContextService.resolve")
     def test_pod_detail_uses_application_environment_context(self, resolve, pod_detail):

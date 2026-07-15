@@ -56,6 +56,18 @@ class ApplicationRuntimeServiceTest(unittest.TestCase):
             "payments-api", "payments-prod", "ghcr.io/acme/api:v1"
         )
 
+    @patch("app.services.application_runtime_service.KubernetesClusterService.client")
+    def test_pod_detail_uses_environment_target_and_application_ownership(self, client):
+        client.return_value = self.target
+        self.target.get_application_pod_detail.return_value = {"name": "pod-1"}
+
+        result = ApplicationRuntimeService().pod_detail(self.context, "pod-1")
+
+        self.assertEqual(result["name"], "pod-1")
+        self.target.get_application_pod_detail.assert_called_once_with(
+            "pod-1", "payments-prod", "payments-api"
+        )
+
 class ReleaseRuntimeIntegrationTest(unittest.TestCase):
     class TestConfig:
         SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"

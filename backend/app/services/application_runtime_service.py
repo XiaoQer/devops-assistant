@@ -27,6 +27,13 @@ class ApplicationRuntimeService:
             context.application.name,
         )
 
+    def pod_detail(self, context, pod_name):
+        return self._client(context).get_application_pod_detail(
+            pod_name,
+            context.environment.namespace,
+            context.application.name,
+        )
+
     def rollback(self, context, image):
         return self._client(context).rollback_deployment(
             context.application.name,

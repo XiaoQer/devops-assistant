@@ -206,6 +206,10 @@ class KubernetesService:
                 "restart_count": restart_count,
                 "node": pod.spec.node_name,
                 "containers": [item.name for item in (pod.spec.containers or [])],
+                "created_at": (
+                    pod.metadata.creation_timestamp.isoformat()
+                    if pod.metadata.creation_timestamp else None
+                ),
             })
 
         if has_failed or (desired and available == 0 and pods):
@@ -354,6 +358,76 @@ class KubernetesService:
         data = ApiClient().sanitize_for_serialization(pod)
         data.get("metadata", {}).pop("managedFields", None)
         return data
+
+    @staticmethod
+    def _timestamp(value):
+        return value.isoformat() if value else None
+
+    def get_application_pod_detail(self, pod_name, namespace, app_name):
+        pod = self._read_application_pod(pod_name, namespace, app_name)
+        events = self.core_api.list_namespaced_event(
+            namespace,
+            field_selector=f"involvedObject.name={pod_name}",
+        ).items
+        status_by_name = {
+            item.name: item for item in (pod.status.container_statuses or [])
+        }
+        containers = []
+        for container in pod.spec.containers or []:
+            status = status_by_name.get(container.name)
+            state = getattr(status, "state", None)
+            running = getattr(state, "running", None)
+            waiting = getattr(state, "waiting", None)
+            terminated = getattr(state, "terminated", None)
+            state_name = (
+                "running" if running else "waiting" if waiting else
+                "terminated" if terminated else "unknown"
+            )
+            containers.append({
+                "name": container.name,
+                "image": getattr(status, "image", None) or container.image,
+                "ready": bool(getattr(status, "ready", False)),
+                "restart_count": int(getattr(status, "restart_count", 0) or 0),
+                "state": state_name,
+                "started_at": self._timestamp(getattr(running, "started_at", None)),
+                "reason": getattr(waiting or terminated, "reason", None),
+                "message": getattr(waiting or terminated, "message", None),
+                "exit_code": getattr(terminated, "exit_code", None),
+            })
+        return {
+            "name": pod.metadata.name,
+            "namespace": namespace,
+            "application_name": app_name,
+            "phase": pod.status.phase,
+            "status": pod.status.phase,
+            "ready": bool(containers) and all(item["ready"] for item in containers),
+            "node": pod.spec.node_name,
+            "pod_ip": pod.status.pod_ip,
+            "host_ip": pod.status.host_ip,
+            "qos_class": pod.status.qos_class,
+            "restart_count": sum(item["restart_count"] for item in containers),
+            "created_at": self._timestamp(pod.metadata.creation_timestamp),
+            "start_time": self._timestamp(pod.status.start_time),
+            "containers": containers,
+            "conditions": [{
+                "type": item.type,
+                "status": item.status,
+                "reason": item.reason,
+                "message": item.message,
+                "last_transition_time": self._timestamp(item.last_transition_time),
+            } for item in (pod.status.conditions or [])],
+            "events": [{
+                "type": item.type,
+                "reason": item.reason,
+                "message": item.message,
+                "count": item.count,
+                "timestamp": self._timestamp(
+                    getattr(item, "event_time", None)
+                    or getattr(item, "last_timestamp", None)
+                    or getattr(item, "first_timestamp", None)
+                ),
+            } for item in events[-50:]],
+        }
 
     def list_application_pod_containers(self, pod_name, namespace, app_name):
         pod = self._read_application_pod(pod_name, namespace, app_name)

@@ -127,6 +127,22 @@ class RuntimeRoutesTest(unittest.TestCase):
         self.assertEqual(response.get_json()["data"]["kind"], "Deployment")
         manifest.assert_called_once_with(context, "payments-api")
 
+    @patch("app.routes.runtime.ApplicationRuntimeService.pod_detail")
+    @patch("app.routes.runtime.DeliveryContextService.resolve")
+    def test_pod_detail_uses_application_environment_context(self, resolve, pod_detail):
+        context = object()
+        resolve.return_value = context
+        pod_detail.return_value = {"name": "payments-api-a", "events": []}
+
+        response = self.client.get(
+            f"/api/projects/{self.project_id}/applications/{self.application_id}"
+            "/environments/prod/runtime/pods/payments-api-a"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["data"]["name"], "payments-api-a")
+        pod_detail.assert_called_once_with(context, "payments-api-a")
+
     @patch("app.routes.runtime.RuntimeExecService.create")
     @patch("app.routes.runtime.DeliveryContextService.resolve")
     def test_exec_session_requires_reason_and_returns_ticket(self, resolve, create):

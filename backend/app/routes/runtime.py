@@ -1,6 +1,7 @@
 from flask import Blueprint, current_app, g, request
 
 from app.services.application_service import ApplicationService
+from app.services.application_runtime_service import ApplicationRuntimeService
 from app.services.delivery_context_service import DeliveryContextService
 from app.services.project_runtime_service import ProjectRuntimeService
 from app.services.project_service import ProjectService
@@ -43,6 +44,15 @@ def runtime_context(project_id, app_id, environment):
     project = ProjectService().get(project_id)
     application = ApplicationService().get(project_id, app_id)
     return DeliveryContextService().resolve(project, application, environment)
+
+
+@bp.get(
+    "/<int:project_id>/applications/<int:app_id>/environments/<environment>"
+    "/runtime/pods/<pod_name>"
+)
+def pod_detail(project_id, app_id, environment, pod_name):
+    context = runtime_context(project_id, app_id, environment)
+    return success(ApplicationRuntimeService().pod_detail(context, pod_name))
 
 
 @bp.get(

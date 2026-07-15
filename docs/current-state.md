@@ -56,7 +56,8 @@
   刷新保留仍存在的环境选择，全部终态后停止轮询。桌面端历史构建栏固定在导航下方并在视口内
   独立滚动，避免右侧长日志在左列形成大块空白；移动端恢复普通上下布局。Application 详情的
   Pipeline Tab 复用同一个构建工作区组件，不再维护简化构建列表或第二套详情；CI/CD 页面保留
-  buildId 深链接，Application Tab 使用本地构建选择。
+  buildId 深链接，Application Tab 使用本地构建选择。共享工作区支持宿主级吸顶偏移：独立
+  CI/CD 页面避开顶部导航，Application Pipeline Tab 的历史栏与右侧详情从同一顶边开始。
 - 发布历史、回滚流程和交付状态同步。
 - Application Environment 已解析为 Project 交付上下文：环境由用户在 Application 工作区
   中显式创建、编辑和删除，不再自动补建 dev；已绑定且连接成功的 Kubernetes 集群作为唯一

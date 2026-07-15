@@ -106,13 +106,15 @@
         <el-tab-pane label="服务概览" name="overview"><ApplicationOverview :application="app" /></el-tab-pane>
         <el-tab-pane :label="`环境 (${environmentRecords.length})`" name="environments"><EnvironmentCenter :application-id="app.id" :project-id="app.project_id || 0" @configure="openEnvironmentConfig" /></el-tab-pane>
         <el-tab-pane :label="`Pipeline (${pipelineBuildCount})`" name="pipeline">
-          <ApplicationBuildWorkspace
-            :project-id="projectId"
-            :application-id="app.id"
-            :selected-build-id="pipelineSelectedBuildId"
-            @build-count="pipelineBuildCount = $event"
-            @select-build="pipelineSelectedBuildId = $event"
-          />
+          <div class="application-pipeline-workspace">
+            <ApplicationBuildWorkspace
+              :project-id="projectId"
+              :application-id="app.id"
+              :selected-build-id="pipelineSelectedBuildId"
+              @build-count="pipelineBuildCount = $event"
+              @select-build="pipelineSelectedBuildId = $event"
+            />
+          </div>
         </el-tab-pane>
         <el-tab-pane :label="`发布记录 (${releases.length})`" name="releases"><ReleaseHistoryTable :releases="releases" :rollback-id="rollbackId" @logs="openLogs" @rollback="rollback" /></el-tab-pane>
         <el-tab-pane label="Kubernetes 资源" name="runtime"><el-skeleton :loading="loadingRuntime" animated :rows="8"><RuntimeStatusPanel :status="runtime" :application-id="app.id" :project-id="projectId" :environment="environment" /></el-skeleton></el-tab-pane>
@@ -1133,6 +1135,10 @@ onMounted(load)
 
 .detail-tabs :deep(.el-tabs__active-bar) {
   background-color: #2563eb !important;
+}
+
+.application-pipeline-workspace {
+  --build-history-sticky-top: 0px;
 }
 
 @media (max-width: 1100px) {

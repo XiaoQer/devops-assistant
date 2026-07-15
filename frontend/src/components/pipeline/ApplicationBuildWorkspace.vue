@@ -380,7 +380,7 @@ defineExpose({ refresh })
 
 .explorer-layout > .build-history {
   position: sticky;
-  top: 80px;
+  top: var(--build-history-sticky-top, 80px);
   max-height: calc(100vh - 92px);
 }
 

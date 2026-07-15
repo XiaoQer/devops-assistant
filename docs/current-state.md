@@ -68,6 +68,10 @@
   路径和 context；目标配置写入目标集群，中央集群只保存 Tekton 与构建 Registry Secret。
 - 审批提交、批准和拒绝流程。
 - Kubernetes 运行状态、Pod 日志和 Pod YAML 接口。
+- Project Runtime 工作台按 Environment 汇总所有 Application 的 Deployment 与 Pod，支持筛选、
+  自动刷新、局部连接错误和资源下钻。Deployment 滚动重启、Pod 删除与浏览器交互式终端均从
+  Project/Application/Environment 上下文解析目标，要求显式确认并写入不含终端内容的运维审计；
+  生产终端还要求操作原因，Exec 票据单次使用并受有效期、空闲超时和并发上限保护。
 - 面向少量平台命令、基于规则的 AI 意图识别。
 - Alembic migration 以及 Kubernetes/Tekton 部署清单。
 - 基础身份认证：通过环境变量非交互初始化预置管理员，使用安全密码哈希和数据库会话；

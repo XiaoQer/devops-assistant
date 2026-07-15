@@ -1,6 +1,6 @@
 # 功能：Project Runtime 工作台
 
-- 状态：已确认
+- 状态：已验收
 - 负责人：Codex
 - 创建日期：2026-07-15
 
@@ -43,20 +43,20 @@ Runtime 页面按环境分组汇总当前 Project 下所有 Application 的 Depl
 
 ## 验收条件
 
-- [ ] 给定当前 Project 有多个 Application Environment，当打开 Runtime 时，则按环境展示各
+- [x] 给定当前 Project 有多个 Application Environment，当打开 Runtime 时，则按环境展示各
       Application 的 Deployment 和 Pod 摘要，并显示 Deployment、健康/异常 Pod 和重启次数指标。
-- [ ] 给定某个环境或集群不可达，当刷新 Runtime 时，则该环境显示脱敏错误，其他环境仍正常展示。
-- [ ] 用户能够按环境、健康状态和关键词筛选，能够手动刷新并开启或关闭自动刷新。
-- [ ] 用户能够查看已归属当前 Application Environment 的 Deployment/Pod YAML 和 Pod 日志；
+- [x] 给定某个环境或集群不可达，当刷新 Runtime 时，则该环境显示脱敏错误，其他环境仍正常展示。
+- [x] 用户能够按环境、健康状态和关键词筛选，能够手动刷新并开启或关闭自动刷新。
+- [x] 用户能够查看已归属当前 Application Environment 的 Deployment/Pod YAML 和 Pod 日志；
       跨 Project、跨 Application、跨环境或不存在的资源请求被拒绝。
-- [ ] 用户二次确认后能够滚动重启 Deployment 或删除 Pod；生产环境显示明确风险提示。
-- [ ] 用户选择 Container、填写操作原因并确认后能够进入交互式终端；未授权、过期、超出并发限制
+- [x] 用户二次确认后能够滚动重启 Deployment 或删除 Pod；生产环境显示明确风险提示。
+- [x] 用户选择 Container、填写操作原因并确认后能够进入交互式终端；未授权、过期、超出并发限制
       或目标上下文漂移的会话被拒绝，空闲 15 分钟的会话自动关闭。
-- [ ] 重启、删除和终端会话记录操作者、Project、Application、环境、集群、Namespace、目标、
+- [x] 重启、删除和终端会话记录操作者、Project、Application、环境、集群、Namespace、目标、
       原因、开始/结束时间与结果，但不记录终端输入输出或 Secret。
-- [ ] HTTP API 继续使用统一响应结构；WebSocket 在握手失败和会话关闭时返回可识别的安全错误。
-- [ ] 后端测试、前端类型检查和生产构建通过，`./scripts/verify.sh` 通过，并完成人工浏览器验收。
-- [ ] `docs/current-state.md` 只在能力通过验收后更新为已实现。
+- [x] HTTP API 继续使用统一响应结构；WebSocket 在握手失败和会话关闭时返回可识别的安全错误。
+- [x] 后端测试、前端类型检查和生产构建通过，`./scripts/verify.sh` 通过，并完成人工浏览器验收。
+- [x] `docs/current-state.md` 只在能力通过验收后更新为已实现。
 
 ## 设计说明
 
@@ -64,8 +64,13 @@ Runtime 页面按环境分组汇总当前 Project 下所有 Application 的 Depl
 
 ## 验证证据
 
-实现过程中补充。
+- `./scripts/verify.sh`：后端 230 项测试通过；前端 32 项测试通过；`vue-tsc` 与 Vite 生产构建通过。
+- Runtime 后端定向回归：聚合、资源归属、审计、票据、Origin、WebSocket 转发和认证相关 58 项通过。
+- 浏览器桌面验收（1280px）：5 个指标、2 个环境分组、Pod 下钻和终端确认流程正常，无横向溢出或控制台错误。
+- 浏览器窄屏验收（390px）：修复 DevCenter 固定侧栏挤压后无横向溢出，5 个指标与 2 个环境分组完整渲染。
+- 浏览器验收使用只读模拟 Kubernetes 响应；Kubernetes Stream、超时和断线由自动化 fake stream 测试证明，
+  未连接在线集群，符合单元检查不得依赖在线 Kubernetes 的仓库约束。
 
 ## 完成
 
-验收后将状态改为“已验收”，记录日期，并把文件移至 `specs/completed/`。
+已于 2026-07-15 验收，移至 `specs/completed/`。

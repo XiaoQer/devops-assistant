@@ -1,0 +1,68 @@
+# 功能：Project Runtime 单环境资源工作台与 Pod 详情
+
+- 状态：已确认
+- 负责人：Codex
+- 创建日期：2026-07-15
+
+## 背景
+
+首版 Project Runtime 同时纵向展示所有 Environment，并把 Pod 放在 Deployment 折叠行内。
+这种信息架构无法形成明确的当前运行上下文；Application 数量增加后页面无限增长，也没有提供用户
+要求的独立 Pod 详情页面。
+
+## 当前行为
+
+- Runtime 一次查询并显示当前 Project 的全部 Application Environment。
+- 每个环境都是一个卡片，Application Deployment 使用折叠行展示 Pod。
+- Pod 日志、YAML、删除和终端从折叠行触发，没有独立详情路由。
+- 搜索和状态筛选在前端对一次性返回的全部聚合数据执行，不适合大量服务。
+
+## 目标行为
+
+Runtime 每次只展示一个显式选择的 Environment，并通过服务端分页呈现当前环境的 Deployment 或
+Pod 资源表。用户点击 Pod 名称进入独立详情页面，在同一上下文查看基础状态、Conditions、
+Containers、Events、Logs、YAML，并执行受治理的终端和删除操作。
+
+## 范围
+
+- 包含：URL 查询参数保存当前环境，页面始终只统计和显示一个环境。
+- 包含：Deployments/Pods 资源 Tab、服务端分页、关键词搜索和状态筛选。
+- 包含：独立 Pod 详情路由和 Overview、Containers、Events、Logs、YAML、Terminal 能力。
+- 包含：Pod 详情所需的 Kubernetes 基础信息、Container 状态、Conditions 和 Events 标准化接口。
+- 包含：沿用 Project/Application/Environment 归属校验、生产风险确认、审计和 Exec 安全约束。
+- 包含：删除首版 Runtime 的环境纵向分组和 Deployment 折叠 Pod 交互。
+
+## 非目标
+
+- 不浏览非 Aegis Application 管理的 Kubernetes 资源。
+- 不新增在线监控指标、节点管理、文件传输、端口转发或终端内容回放。
+- 不伪造 CPU/Memory 指标；没有 Metrics API 数据时不展示资源使用率。
+- 不在本次返工中新增 Deployment 独立详情页。
+
+## 验收条件
+
+- [ ] Runtime 首次进入选择一个有效环境，切换环境时 URL、指标和资源表同步更新，页面不同时铺开多个环境。
+- [ ] Deployment 与 Pod 使用独立 Tab；搜索、状态筛选和分页由服务端执行，每页默认 20 条、最多 100 条。
+- [ ] 给定大量 Application，页面 DOM 只渲染当前页资源，不随 Project 全量服务数无限增长。
+- [ ] Deployment 表显示 Application、状态、副本、Pod 数、重启数、镜像和操作；Pod 表显示 Pod、
+      Application、状态、Ready、Container 数、重启数、Node 和创建时间。
+- [ ] 点击 Pod 名称进入独立详情路由，刷新后仍能从 URL 恢复 Project、Environment、Application 和 Pod。
+- [ ] Pod 详情展示基础信息、Conditions、Containers 和 Events，错误与空状态可区分。
+- [ ] Logs 支持 Container 和 Tail 行数选择、刷新与复制；YAML 为只读完整资源内容。
+- [ ] Terminal 要求 Container、原因和二次确认，继续满足单次票据、Origin、超时、并发和元数据审计约束。
+- [ ] 删除 Pod 必须二次确认；生产环境使用强化风险文案；成功只显示“操作已提交”。
+- [ ] 旧的环境卡片和 Deployment 折叠 Pod 交互不再出现在 Runtime 主页面。
+- [ ] 后端自动化测试、前端测试、类型检查、生产构建和 `./scripts/verify.sh` 通过。
+- [ ] 浏览器验收覆盖桌面、窄屏、环境切换、两个资源 Tab、分页和 Pod 详情主要 Tab。
+
+## 设计说明
+
+详细设计见 `docs/superpowers/specs/2026-07-15-project-runtime-workspace-v2-design.md`。
+
+## 验证证据
+
+实现过程中补充。
+
+## 完成
+
+验收后记录日期并移至 `specs/completed/`。

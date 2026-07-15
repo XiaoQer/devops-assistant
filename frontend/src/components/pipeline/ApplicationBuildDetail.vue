@@ -22,66 +22,65 @@
 
         <p v-if="build.error_message" class="build-error">{{ build.error_message }}</p>
 
-        <section class="steps-section">
-          <div class="section-title">
-            <div><span>PIPELINE STEPS</span><h3>构建步骤</h3></div>
-            <el-button v-if="logsError" text @click="$emit('retry-logs')">重新加载日志</el-button>
-          </div>
+        <PipelineStepLogPanel
+          eyebrow="BUILD PIPELINE STEPS"
+          title="实际构建步骤"
+          :steps="steps"
+          :selected-step-id="selectedStepId"
+          :loading="loading"
+          :error="logsError"
+          :empty-description="build.pipeline_run_name ? 'PipelineRun 可能仍在初始化，请稍后刷新。' : '此构建没有关联 PipelineRun。'"
+          @select-step="$emit('select-step', $event)"
+          @retry="$emit('retry-logs')"
+        />
 
-          <div v-if="steps.length" class="step-tabs">
-            <button
-              v-for="step in steps"
-              :key="step.id"
-              type="button"
-              :class="['step-tab', `status-${step.status.toLowerCase()}`, { active: step.id === selectedStepId }]"
-              :aria-pressed="step.id === selectedStepId"
-              @click="$emit('select-step', step.id)"
-            >
-              <i>{{ mark(step.status) }}</i>
-              <span><strong>{{ step.label }}</strong><small>{{ step.status }}</small></span>
-            </button>
-          </div>
-
-          <div v-if="logsError" class="log-state error-state">
-            <strong>执行日志暂时不可用</strong>
-            <p>{{ logsError }}</p>
-          </div>
-          <div v-else-if="selectedStep" class="log-panel">
-            <header><span>{{ selectedStep.label }}</span><b>{{ selectedStep.status }}</b></header>
-            <pre>{{ selectedStep.logs || '该步骤没有返回日志。' }}</pre>
-          </div>
-          <div v-else class="log-state">
-            <strong>{{ build.pipeline_run_name ? '尚无可展示的构建步骤' : '执行详情尚不可用' }}</strong>
-            <p>{{ build.pipeline_run_name ? 'PipelineRun 可能仍在初始化，运行中会自动刷新。' : '此构建没有关联 PipelineRun。' }}</p>
-          </div>
-        </section>
+        <BuildDeliveryTargets
+          :batch="batch"
+          :selected-target-id="selectedTargetId"
+          :steps="deploySteps"
+          :selected-step-id="selectedDeployStepId"
+          :loading="deployLoading"
+          :error="deployError"
+          @select-target="$emit('select-target', $event)"
+          @select-step="$emit('select-deploy-step', $event)"
+          @retry="$emit('retry-deploy-logs')"
+        />
       </template>
     </el-skeleton>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import StatusBadge from '../common/StatusBadge.vue'
-import type { BuildVersion } from '../../types'
-import type { BuildStepDetail } from '../../features/build-explorer/state'
+import PipelineStepLogPanel from './PipelineStepLogPanel.vue'
+import BuildDeliveryTargets from './BuildDeliveryTargets.vue'
+import type { BuildVersion, ReleaseBatch } from '../../types'
+import type { ExecutionStepDetail } from '../../features/build-explorer/state'
 
-const props = defineProps<{
+defineProps<{
   build?: BuildVersion
-  steps: BuildStepDetail[]
+  steps: ExecutionStepDetail[]
   selectedStepId?: string
   loading: boolean
   logsError?: string
+  batch?: ReleaseBatch
+  selectedTargetId?: number
+  deploySteps?: ExecutionStepDetail[]
+  selectedDeployStepId?: string
+  deployLoading?: boolean
+  deployError?: string
 }>()
 
 defineEmits<{
   'select-step': [stepId: string]
   'retry-logs': []
+  'select-target': [targetId: number]
+  'select-deploy-step': [stepId: string]
+  'retry-deploy-logs': []
 }>()
 
 const detailElement = ref<HTMLElement>()
-const selectedStep = computed(() => props.steps.find(step => step.id === props.selectedStepId))
-
 defineExpose({
   scrollIntoView: () => detailElement.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
 })
@@ -90,11 +89,6 @@ function format(value?: string) {
   return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
 }
 
-function mark(status: string) {
-  if (status === 'Succeeded') return '✓'
-  if (status === 'Failed') return '✕'
-  return '↻'
-}
 </script>
 
 <style scoped>

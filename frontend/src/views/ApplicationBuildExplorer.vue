@@ -77,12 +77,12 @@ import {
   buildExplorerPath,
   canRefreshHistory,
   createRequestGate,
-  defaultStepId,
+  defaultExecutionStepId,
   explorerContentState,
-  normalizeBuildSteps,
+  normalizeExecutionSteps,
   selectRequestedBuild,
   shouldPollBuild,
-  type BuildStepDetail,
+  type ExecutionStepDetail,
 } from '../features/build-explorer/state'
 import type { Application, BuildVersion, CicdEnvironmentOption } from '../types'
 
@@ -94,7 +94,7 @@ const application = ref<Application>()
 const builds = ref<BuildVersion[]>([])
 const environments = ref<CicdEnvironmentOption[]>([])
 const selectedBuild = ref<BuildVersion>()
-const steps = ref<BuildStepDetail[]>([])
+const steps = ref<ExecutionStepDetail[]>([])
 const selectedStepId = ref<string>()
 const invalidRequestedId = ref(false)
 const contextError = ref('')
@@ -201,8 +201,8 @@ async function loadLogs(build: BuildVersion, generation: number) {
   try {
     const details = await pipelineApi.logs(projectId, build.pipeline_run_name)
     if (generation !== requestGeneration) return
-    steps.value = normalizeBuildSteps(details, build.build_type)
-    selectedStepId.value = defaultStepId(steps.value)
+    steps.value = normalizeExecutionSteps(details)
+    selectedStepId.value = defaultExecutionStepId(steps.value)
   } catch (error) {
     if (generation !== requestGeneration) return
     logsError.value = (error as Error).message

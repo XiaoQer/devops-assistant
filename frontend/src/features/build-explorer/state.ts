@@ -1,4 +1,4 @@
-import type { BuildVersion, PipelineLogDetails, ReleaseBatch } from '../../types'
+import type { BuildVersion, PipelineLogDetails, ReleaseBatch, ReleaseTarget } from '../../types'
 
 export interface ExecutionStepDetail {
   id: string
@@ -131,6 +131,22 @@ export function hasActiveDelivery(build?: BuildVersion, batch?: ReleaseBatch) {
   if (!batch) return false
   return activeStatuses.has(batch.status)
     || batch.targets.some(target => activeStatuses.has(target.status))
+}
+
+export function targetExecutionState(target: ReleaseTarget) {
+  const descriptions: Record<string, string> = {
+    WaitingApproval: '等待审批',
+    Pending: '等待创建部署 Pipeline',
+    WaitingBuild: '等待构建完成',
+    Deploying: '部署中',
+    Running: '部署中',
+    Succeeded: '部署成功',
+    Failed: '部署失败',
+  }
+  return {
+    canLoadLogs: Boolean(target.pipeline_run_name),
+    description: descriptions[target.status] || target.status,
+  }
 }
 
 export function defaultStepId(steps: BuildStepDetail[]) {

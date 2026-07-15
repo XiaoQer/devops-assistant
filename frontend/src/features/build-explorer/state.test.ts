@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { BuildVersion, PipelineLogDetails, ReleaseBatch } from '../../types'
+import type { BuildVersion, PipelineLogDetails, ReleaseBatch, ReleaseTarget } from '../../types'
 import {
   buildExplorerPath,
   canRefreshHistory,
@@ -11,6 +11,7 @@ import {
   normalizeExecutionSteps,
   selectRequestedBuild,
   shouldPollBuild,
+  targetExecutionState,
 } from './state'
 
 function build(id: number): BuildVersion {
@@ -172,6 +173,21 @@ describe('build explorer state', () => {
     } as ReleaseBatch
     expect(hasActiveDelivery(build(42), batch)).toBe(true)
     expect(hasActiveDelivery(build(42), { ...batch, status: 'Succeeded', targets: [{ id: 7, status: 'Succeeded' }] } as ReleaseBatch)).toBe(false)
+  })
+
+  it('describes target business state without inventing a PipelineRun', () => {
+    const waiting = targetExecutionState({ status: 'WaitingApproval' } as ReleaseTarget)
+    expect(waiting).toEqual({ canLoadLogs: false, description: '等待审批' })
+    const pending = targetExecutionState({ status: 'Pending' } as ReleaseTarget)
+    expect(pending).toEqual({ canLoadLogs: false, description: '等待创建部署 Pipeline' })
+  })
+
+  it('loads logs only when the environment target has a PipelineRun', () => {
+    const deploying = targetExecutionState({
+      status: 'Deploying',
+      pipeline_run_name: 'deploy-qa-1',
+    } as ReleaseTarget)
+    expect(deploying).toEqual({ canLoadLogs: true, description: '部署中' })
   })
 
   it('polls only non-terminal build states', () => {

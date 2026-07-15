@@ -5,6 +5,7 @@ import {
   decodeTerminalFrame,
   encodeResizeFrame,
   isProduction,
+  shouldToggleDeploymentRow,
   statusTone,
 } from './runtime-view-model'
 
@@ -32,5 +33,13 @@ describe('runtime view model', () => {
     expect(decodeTerminalFrame(JSON.stringify({ type: 'stdout', data: 'ok\n' })))
       .toEqual({ type: 'stdout', data: 'ok\n' })
     expect(decodeTerminalFrame('not-json')).toEqual({ type: 'status', status: 'invalid-frame' })
+  })
+
+  it('toggles from ordinary row clicks but ignores resource actions', () => {
+    expect(shouldToggleDeploymentRow()).toBe(true)
+    expect(shouldToggleDeploymentRow('yaml')).toBe(false)
+    expect(shouldToggleDeploymentRow('restart')).toBe(false)
+    expect(shouldToggleDeploymentRow('pod-detail')).toBe(false)
+    expect(shouldToggleDeploymentRow('retry')).toBe(false)
   })
 })

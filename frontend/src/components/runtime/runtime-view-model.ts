@@ -21,6 +21,10 @@ export function confirmationCopy(
     : `${prefix}确认删除 Pod ${resource}？控制器可能会创建替代 Pod。`
 }
 
+export function shouldToggleDeploymentRow(action?: string) {
+  return !action
+}
+
 export function encodeResizeFrame(cols: number, rows: number) {
   return JSON.stringify({ type: 'resize', cols, rows })
 }

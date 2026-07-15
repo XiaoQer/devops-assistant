@@ -69,8 +69,9 @@
 - 审批提交、批准和拒绝流程。
 - Kubernetes 运行状态、Pod 日志和 Pod YAML 接口。
 - Project Runtime 工作台每次只展示一个 URL 显式选择的 Environment，并以服务端搜索、状态筛选
-  和 20/50/100 条分页分别展示 Deployment 与 Pod，不再同时纵向铺开全部环境。Pod 名称进入独立
-  详情路由，可查看基础信息、Conditions、Containers、Events、按 Container/Tail 读取日志及 YAML。
+  和 20/50/100 条分页展示 Deployment，不再同时纵向铺开全部环境或把 Pod 作为平级资源 Tab。
+  Deployment 行按需懒加载其 Pod，局部错误可单独重试；Pod 名称进入独立详情路由，可查看基础
+  信息、Conditions、Containers、Events、按 Container/Tail 读取日志及 YAML。
   Deployment 滚动重启、Pod 删除与浏览器交互式终端均从
   Project/Application/Environment 上下文解析目标，要求显式确认并写入不含终端内容的运维审计；
   终端还要求操作原因，Exec 票据单次使用并受有效期、空闲超时和并发上限保护。

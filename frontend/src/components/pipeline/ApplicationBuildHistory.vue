@@ -69,9 +69,19 @@ function duration(build: BuildVersion) {
 
 <style scoped>
 .build-history {
+  height: calc(100vh - 92px);
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   box-shadow: none;
+}
+
+.build-history :deep(.el-skeleton) {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
 }
 
 header,
@@ -112,7 +122,8 @@ header b {
 }
 
 .history-list {
-  max-height: calc(100vh - 250px);
+  min-height: 0;
+  flex: 1;
   overflow: auto;
   padding: 8px;
 }
@@ -166,7 +177,12 @@ header b {
 }
 
 @media (max-width: 760px) {
+  .build-history {
+    height: auto;
+  }
+
   .history-list {
+    flex: none;
     max-height: 280px;
   }
 }

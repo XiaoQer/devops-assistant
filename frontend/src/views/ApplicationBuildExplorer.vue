@@ -408,6 +408,12 @@ onBeforeUnmount(() => {
   align-items: start;
 }
 
+.explorer-layout > .build-history {
+  position: sticky;
+  top: 80px;
+  max-height: calc(100vh - 92px);
+}
+
 .explorer-empty {
   box-shadow: none;
 }
@@ -415,6 +421,11 @@ onBeforeUnmount(() => {
 @media (max-width: 760px) {
   .explorer-layout {
     grid-template-columns: 1fr;
+  }
+
+  .explorer-layout > .build-history {
+    position: static;
+    max-height: none;
   }
 }
 </style>

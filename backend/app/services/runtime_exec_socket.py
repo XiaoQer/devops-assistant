@@ -52,7 +52,12 @@ class RuntimeExecSocketBridge:
                 except TimeoutError:
                     raw = ""
                 if raw is None:
-                    break
+                    # simple-websocket returns None both for a receive timeout
+                    # and for a closed socket. Only the latter ends the exec
+                    # session; an idle client must remain connected.
+                    if getattr(websocket, "connected", True) is False:
+                        break
+                    raw = ""
                 if raw:
                     frame = json.loads(raw)
                     frame_type = frame.get("type")

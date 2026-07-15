@@ -19,6 +19,16 @@ class FakeWebSocket:
         self.sent.append(json.loads(payload))
 
 
+class TimeoutThenMessageWebSocket(FakeWebSocket):
+    connected = True
+
+    def receive(self, timeout=None):
+        if self.messages and self.messages[0] is None:
+            self.messages.pop(0)
+            return None
+        return super().receive(timeout)
+
+
 class FakeStream:
     def __init__(self):
         self.stdin = []
@@ -116,6 +126,28 @@ class RuntimeExecSocketBridgeTest(unittest.TestCase):
         self.audit.finish.assert_called_once_with("Succeeded")
         self.registry.release.assert_called_once_with("ticket")
         stream.close()
+
+    @patch("app.services.runtime_exec_socket.db.session.commit")
+    @patch("app.services.runtime_exec_socket.KubernetesClusterService.client")
+    def test_receive_timeout_does_not_close_session(self, client, _commit):
+        stream = FakeStream()
+        client.return_value.open_application_pod_exec.return_value = stream
+        websocket = TimeoutThenMessageWebSocket([
+            None,
+            json.dumps({"type": "stdin", "data": "pwd\n"}),
+            json.dumps({"type": "close"}),
+        ])
+
+        RuntimeExecSocketBridge(self.registry).run(
+            websocket,
+            "ticket",
+            SimpleNamespace(id=7),
+            "http://localhost:5173",
+            ["http://localhost:5173"],
+        )
+
+        self.assertEqual(stream.stdin, ["pwd\n"])
+        self.audit.finish.assert_called_once_with("Succeeded")
 
 
 if __name__ == "__main__":

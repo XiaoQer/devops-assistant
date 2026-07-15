@@ -15,6 +15,10 @@ class RuntimeExecSocketBridge:
 
     def run(self, websocket, ticket, actor, origin, allowed_origins):
         if origin not in allowed_origins:
+            # The ticket was issued before the WebSocket handshake. Release it
+            # on handshake rejection so a failed first attempt cannot reserve
+            # the target until the TTL expires.
+            self.registry.release(ticket)
             raise ApiError("终端连接来源不受信任", 403, "EXEC_ORIGIN_REJECTED")
         session = self.registry.consume(ticket, actor.id)
         payload = session.payload

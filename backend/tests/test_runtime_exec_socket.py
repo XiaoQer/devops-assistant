@@ -88,6 +88,7 @@ class RuntimeExecSocketBridgeTest(unittest.TestCase):
 
         self.assertEqual(caught.exception.code, "EXEC_ORIGIN_REJECTED")
         self.registry.consume.assert_not_called()
+        self.registry.release.assert_called_once_with("ticket")
 
     @patch("app.services.runtime_exec_socket.db.session.commit")
     @patch("app.services.runtime_exec_socket.KubernetesClusterService.client")

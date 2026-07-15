@@ -28,7 +28,7 @@ class Config:
     AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
     CORS_ORIGINS = _comma_separated_env(
         "CORS_ORIGINS",
-        "http://localhost:5173",
+        "http://localhost:5173,http://127.0.0.1:5173",
     )
     RUNTIME_EXEC_TICKET_TTL_SECONDS = int(
         os.getenv("RUNTIME_EXEC_TICKET_TTL_SECONDS", "60")

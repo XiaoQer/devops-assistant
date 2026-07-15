@@ -304,7 +304,7 @@ class AuthConfigTest(unittest.TestCase):
             self.assertEqual(config.AUTH_COOKIE_NAME, "aegis_session")
             self.assertEqual(config.AUTH_CSRF_COOKIE_NAME, "aegis_csrf")
             self.assertFalse(config.AUTH_COOKIE_SECURE)
-            self.assertEqual(config.CORS_ORIGINS, ["http://localhost:5173"])
+            self.assertEqual(config.CORS_ORIGINS, ["http://localhost:5173", "http://127.0.0.1:5173"])
             self.assertEqual(config.MAX_CONTENT_LENGTH, 16384)
 
     def test_auth_config_parses_environment_values(self):

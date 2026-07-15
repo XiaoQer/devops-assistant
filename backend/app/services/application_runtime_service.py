@@ -12,17 +12,19 @@ class ApplicationRuntimeService:
         )
 
     def pod_logs(self, context, pod_name, container=None, tail_lines=500):
-        return self._client(context).get_pod_logs(
+        return self._client(context).get_application_pod_logs(
             pod_name,
             context.environment.namespace,
+            context.application.name,
             container,
             tail_lines,
         )
 
     def pod_manifest(self, context, pod_name):
-        return self._client(context).get_pod_manifest(
+        return self._client(context).get_application_pod_manifest(
             pod_name,
             context.environment.namespace,
+            context.application.name,
         )
 
     def rollback(self, context, image):

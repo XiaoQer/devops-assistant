@@ -34,8 +34,8 @@ class ApplicationRuntimeServiceTest(unittest.TestCase):
     @patch("app.services.application_runtime_service.KubernetesClusterService.client")
     def test_logs_manifest_and_rollback_use_same_target(self, client):
         client.return_value = self.target
-        self.target.get_pod_logs.return_value = "pod logs"
-        self.target.get_pod_manifest.return_value = {"kind": "Pod"}
+        self.target.get_application_pod_logs.return_value = "pod logs"
+        self.target.get_application_pod_manifest.return_value = {"kind": "Pod"}
         self.target.rollback_deployment.return_value = {"image": "ghcr.io/acme/api:v1"}
         service = ApplicationRuntimeService()
 
@@ -46,11 +46,11 @@ class ApplicationRuntimeServiceTest(unittest.TestCase):
         self.assertEqual(logs, "pod logs")
         self.assertEqual(manifest, {"kind": "Pod"})
         self.assertEqual(rollback["image"], "ghcr.io/acme/api:v1")
-        self.target.get_pod_logs.assert_called_once_with(
-            "pod-1", "payments-prod", "api", 100
+        self.target.get_application_pod_logs.assert_called_once_with(
+            "pod-1", "payments-prod", "payments-api", "api", 100
         )
-        self.target.get_pod_manifest.assert_called_once_with(
-            "pod-1", "payments-prod"
+        self.target.get_application_pod_manifest.assert_called_once_with(
+            "pod-1", "payments-prod", "payments-api"
         )
         self.target.rollback_deployment.assert_called_once_with(
             "payments-api", "payments-prod", "ghcr.io/acme/api:v1"

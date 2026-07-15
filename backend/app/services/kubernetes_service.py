@@ -321,6 +321,90 @@ class KubernetesService:
         data.get("metadata", {}).pop("managedFields", None)
         return data
 
+    @staticmethod
+    def _has_application_label(resource, app_name):
+        labels = resource.metadata.labels or {}
+        return labels.get("app") == app_name or labels.get(
+            "app.kubernetes.io/name"
+        ) == app_name
+
+    def _read_application_pod(self, pod_name, namespace, app_name):
+        from app.utils.errors import ApiError
+
+        try:
+            pod = self.core_api.read_namespaced_pod(pod_name, namespace)
+        except client.ApiException as exc:
+            if exc.status == 404:
+                raise ApiError("Pod 不存在", 404, "POD_NOT_FOUND") from exc
+            raise
+        if not self._has_application_label(pod, app_name):
+            raise ApiError("Pod 不属于当前 Application", 404, "POD_NOT_FOUND")
+        return pod
+
+    def get_application_pod_logs(
+        self, pod_name, namespace, app_name, container=None, tail_lines=500
+    ):
+        self._read_application_pod(pod_name, namespace, app_name)
+        return self.get_pod_logs(pod_name, namespace, container, tail_lines)
+
+    def get_application_pod_manifest(self, pod_name, namespace, app_name):
+        pod = self._read_application_pod(pod_name, namespace, app_name)
+        data = ApiClient().sanitize_for_serialization(pod)
+        data.get("metadata", {}).pop("managedFields", None)
+        return data
+
+    def get_application_deployment_manifest(
+        self, deployment_name, namespace, app_name
+    ):
+        from app.utils.errors import ApiError
+
+        if deployment_name != app_name:
+            raise ApiError(
+                "Deployment 不属于当前 Application",
+                404,
+                "DEPLOYMENT_NOT_FOUND",
+            )
+        try:
+            deployment = self.apps_api.read_namespaced_deployment(
+                deployment_name, namespace
+            )
+        except client.ApiException as exc:
+            if exc.status == 404:
+                raise ApiError("Deployment 不存在", 404, "DEPLOYMENT_NOT_FOUND") from exc
+            raise
+        data = ApiClient().sanitize_for_serialization(deployment)
+        data.get("metadata", {}).pop("managedFields", None)
+        return data
+
+    def restart_deployment(self, deployment_name, namespace, app_name):
+        self.get_application_deployment_manifest(deployment_name, namespace, app_name)
+        restarted_at = datetime.now(timezone.utc).isoformat()
+        self.apps_api.patch_namespaced_deployment(
+            deployment_name,
+            namespace,
+            {
+                "spec": {
+                    "template": {
+                        "metadata": {
+                            "annotations": {
+                                "kubectl.kubernetes.io/restartedAt": restarted_at
+                            }
+                        }
+                    }
+                }
+            },
+        )
+        return {
+            "deployment": deployment_name,
+            "namespace": namespace,
+            "restarted_at": restarted_at,
+        }
+
+    def delete_application_pod(self, pod_name, namespace, app_name):
+        self._read_application_pod(pod_name, namespace, app_name)
+        self.core_api.delete_namespaced_pod(pod_name, namespace)
+        return {"pod": pod_name, "namespace": namespace, "deleted": True}
+
     def rollback_deployment(self, deployment_name, namespace, image):
         deployment = self.apps_api.read_namespaced_deployment(
             deployment_name, namespace

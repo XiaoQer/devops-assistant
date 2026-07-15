@@ -108,3 +108,21 @@
 - [ ] Mark hierarchy acceptance conditions with exact verification evidence; keep browser checks unchecked if authentication still blocks them.
 - [ ] Update only the Runtime paragraph in `docs/current-state.md` to describe Deployment expansion rather than flat tabs.
 - [ ] Run `git diff --check`, verify unrelated Portal changes remain unstaged, and commit `docs: record runtime hierarchy verification`.
+
+### Task 6: Row-wide expansion and light visual hierarchy
+
+**Files:**
+- Modify: `frontend/src/components/runtime/RuntimeResourceTable.vue`
+- Replace: `frontend/src/components/runtime/DeploymentPodTable.vue`
+- Modify: `frontend/src/components/runtime/runtime-view-model.ts`
+- Modify: `frontend/src/components/runtime/runtime-view-model.test.ts`
+
+**Interfaces:**
+- Produces: `shouldToggleDeploymentRow(action?: string) -> boolean` for excluding YAML, restart and Pod-detail controls from row expansion.
+
+- [ ] Add a failing view-model test proving ordinary row clicks toggle while marked actions do not.
+- [ ] Run the focused Vitest file and confirm the new helper is missing.
+- [ ] Implement the click guard and use `el-table.toggleRowExpansion(row)` from a row-click handler.
+- [ ] Replace the nested Pod table with responsive light grid rows and explicit field labels.
+- [ ] Override the main table header, hover, expansion and cell colors with the approved light palette.
+- [ ] Run all frontend tests and the production build, then commit `style: refine runtime deployment hierarchy`.

@@ -58,11 +58,19 @@ export function buildExplorerPath(projectId: number, applicationId: number, buil
 }
 
 export function selectRequestedBuild(builds: BuildVersion[], requestedId?: number) {
-  if (requestedId === undefined) {
-    return { build: builds[0], invalidRequestedId: false }
+  const { build, invalidRequestedId } = resolveWorkspaceBuild(builds, requestedId)
+  return { build, invalidRequestedId }
+}
+
+export function resolveWorkspaceBuild(builds: BuildVersion[], selectedBuildId?: number) {
+  if (!builds.length) {
+    return { build: undefined, invalidRequestedId: false, shouldSyncSelection: false }
   }
-  const build = builds.find(item => item.id === requestedId)
-  return { build, invalidRequestedId: !build }
+  if (selectedBuildId === undefined) {
+    return { build: builds[0], invalidRequestedId: false, shouldSyncSelection: true }
+  }
+  const build = builds.find(item => item.id === selectedBuildId)
+  return { build, invalidRequestedId: !build, shouldSyncSelection: false }
 }
 
 export function createRequestGate() {

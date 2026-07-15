@@ -14,6 +14,7 @@ import {
   selectRequestedBuild,
   targetExecutionState,
   preserveExecutionKey,
+  resolveWorkspaceBuild,
   targetIdFromExecutionKey,
 } from './state'
 
@@ -76,6 +77,21 @@ describe('build explorer state', () => {
 
   it('selects the latest build when no id is requested', () => {
     expect(selectRequestedBuild([build(42), build(41)], undefined).build?.id).toBe(42)
+  })
+
+  it('resolves controlled and latest workspace build selection', () => {
+    expect(resolveWorkspaceBuild([build(42), build(41)], 41)).toEqual({
+      build: build(41), invalidRequestedId: false, shouldSyncSelection: false,
+    })
+    expect(resolveWorkspaceBuild([build(42), build(41)], undefined)).toEqual({
+      build: build(42), invalidRequestedId: false, shouldSyncSelection: true,
+    })
+    expect(resolveWorkspaceBuild([build(42)], 99)).toEqual({
+      build: undefined, invalidRequestedId: true, shouldSyncSelection: false,
+    })
+    expect(resolveWorkspaceBuild([], undefined)).toEqual({
+      build: undefined, invalidRequestedId: false, shouldSyncSelection: false,
+    })
   })
 
   it('rejects an id outside the application build list', () => {

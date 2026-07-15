@@ -13,6 +13,8 @@ import {
   normalizeExecutionSteps,
   selectRequestedBuild,
   targetExecutionState,
+  preserveExecutionKey,
+  targetIdFromExecutionKey,
 } from './state'
 
 function build(id: number): BuildVersion {
@@ -228,5 +230,19 @@ describe('build explorer state', () => {
       { id: 2, status: 'Succeeded', pipeline_run_name: 'deploy-qa' },
     ] as ReleaseTarget[])).toBe(2)
     expect(defaultTargetId([{ id: 1, status: 'WaitingApproval' }] as ReleaseTarget[])).toBe(1)
+  })
+
+  it('models build and target execution keys without an implicit target request', () => {
+    expect(targetIdFromExecutionKey('build')).toBeUndefined()
+    expect(targetIdFromExecutionKey('target:7')).toBe(7)
+  })
+
+  it('preserves an existing environment selection and falls back to build', () => {
+    const batch = {
+      targets: [{ id: 7, status: 'Succeeded' }, { id: 8, status: 'Succeeded' }],
+    } as ReleaseBatch
+    expect(preserveExecutionKey('target:7', batch)).toBe('target:7')
+    expect(preserveExecutionKey('target:9', batch)).toBe('build')
+    expect(preserveExecutionKey('build', batch)).toBe('build')
   })
 })

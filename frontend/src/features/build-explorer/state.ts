@@ -11,6 +11,23 @@ export interface ExecutionStepDetail {
   logs: string
 }
 
+export type DeliveryExecutionKey = 'build' | `target:${number}`
+
+export function targetIdFromExecutionKey(key: DeliveryExecutionKey) {
+  if (key === 'build') return undefined
+  const targetId = Number(key.slice('target:'.length))
+  return Number.isInteger(targetId) && targetId > 0 ? targetId : undefined
+}
+
+export function preserveExecutionKey(
+  key: DeliveryExecutionKey,
+  batch?: ReleaseBatch,
+): DeliveryExecutionKey {
+  const targetId = targetIdFromExecutionKey(key)
+  if (targetId === undefined) return 'build'
+  return batch?.targets.some(target => target.id === targetId) ? key : 'build'
+}
+
 export function buildExplorerPath(projectId: number, applicationId: number, buildId?: number) {
   const base = `/devcenter/projects/${projectId}/pipelines/applications/${applicationId}/builds`
   return buildId === undefined ? base : `${base}/${buildId}`

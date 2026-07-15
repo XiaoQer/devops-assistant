@@ -152,6 +152,59 @@ export interface RuntimeStatus {
   secrets?: Array<Record<string, unknown>>
 }
 
+export interface RuntimePod {
+  name: string
+  status: string
+  ready: boolean
+  restart_count: number
+  node?: string
+  containers?: string[]
+}
+
+export interface RuntimeDeployment {
+  name: string
+  replicas: number
+  ready_replicas: number
+  updated_replicas: number
+  available_replicas: number
+  images: string[]
+}
+
+export interface RuntimeApplication {
+  application_id: number
+  application_name: string
+  namespace: string
+  status: RuntimeStatus['status']
+  deployment?: RuntimeDeployment | null
+  pods: RuntimePod[]
+  error?: { code: string; message: string }
+}
+
+export interface RuntimeEnvironmentGroup {
+  name: string
+  display_name: string
+  cluster_name?: string
+  applications: RuntimeApplication[]
+}
+
+export interface ProjectRuntimeOverview {
+  summary: {
+    environments: number
+    deployments: number
+    healthy_pods: number
+    unhealthy_pods: number
+    restart_count: number
+  }
+  environments: RuntimeEnvironmentGroup[]
+  refreshed_at: string
+}
+
+export interface RuntimeExecSession {
+  ticket: string
+  expires_at: string
+  websocket_url: string
+}
+
 export interface ApplicationEnvironment {
   id: number
   application_id: number

@@ -130,7 +130,7 @@ const router = createRouter({
         },
         {
           path: 'projects/:projectId/runtime',
-          component: () => import('../views/ApplicationList.vue'),
+          component: () => import('../views/ProjectRuntime.vue'),
           meta: { title: 'Runtime' },
         },
         {

@@ -205,6 +205,7 @@ class KubernetesService:
                 "ready": containers_ready,
                 "restart_count": restart_count,
                 "node": pod.spec.node_name,
+                "containers": [item.name for item in (pod.spec.containers or [])],
             })
 
         if has_failed or (desired and available == 0 and pods):

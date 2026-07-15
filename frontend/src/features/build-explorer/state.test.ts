@@ -92,6 +92,12 @@ describe('build explorer state', () => {
     expect(resolveWorkspaceBuild([], undefined)).toEqual({
       build: undefined, invalidRequestedId: false, shouldSyncSelection: false,
     })
+    expect(resolveWorkspaceBuild([], 99)).toEqual({
+      build: undefined, invalidRequestedId: true, shouldSyncSelection: false,
+    })
+    expect(resolveWorkspaceBuild([], Number.NaN)).toEqual({
+      build: undefined, invalidRequestedId: true, shouldSyncSelection: false,
+    })
   })
 
   it('rejects an id outside the application build list', () => {

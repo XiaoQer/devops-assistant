@@ -64,7 +64,11 @@ export function selectRequestedBuild(builds: BuildVersion[], requestedId?: numbe
 
 export function resolveWorkspaceBuild(builds: BuildVersion[], selectedBuildId?: number) {
   if (!builds.length) {
-    return { build: undefined, invalidRequestedId: false, shouldSyncSelection: false }
+    return {
+      build: undefined,
+      invalidRequestedId: selectedBuildId !== undefined,
+      shouldSyncSelection: false,
+    }
   }
   if (selectedBuildId === undefined) {
     return { build: builds[0], invalidRequestedId: false, shouldSyncSelection: true }

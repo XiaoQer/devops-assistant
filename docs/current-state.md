@@ -8,8 +8,10 @@
 
 - 基于 Vue 3、TypeScript、Pinia、Vue Router、Element Plus 和 Vite 的前端。
 - Portal、项目中心和开发中心导航。
-- Portal 将 Aegis 定位为 Software OS，介绍统一软件上下文、事实层、控制层、
-  执行层和智能层，并提供项目治理与应用交付两个工作空间入口。
+- Portal 将 Aegis 定位为 AI Native Software Operating System，并使用 Project 中心化平台
+  全景图表达统一治理上下文、Application Delivery、Runtime View、Resources View、FinOps、
+  AIOps、Governance、AI Intelligence 与 Execution Plane。全景图是产品能力和演进方向表达，
+  不代表 FinOps、完整 AIOps 或相关规划能力已经实现。
 - 项目 CRUD、成员管理、Kubernetes 集群管理和项目级镜像仓库。
 - Project 本体保存治理和外部资源绑定元信息，包括业务负责人、成本负责人、GitHub
   组边界、仓库默认可见性、Aliyun 账号、资源组、区域、VPC 和绑定状态。
@@ -75,6 +77,8 @@
   Deployment 滚动重启、Pod 删除与浏览器交互式终端均从
   Project/Application/Environment 上下文解析目标，要求显式确认并写入不含终端内容的运维审计；
   终端还要求操作原因，Exec 票据单次使用并受有效期、空闲超时和并发上限保护。
+  Pod 详情页已采用 Container-first 运维工作区：紧凑资源头、Container 行级日志/终端入口、右侧
+  Pod 信息栏，以及浅色 Conditions/Events 表格；删除 Pod 收进更多操作菜单。
 - 面向少量平台命令、基于规则的 AI 意图识别。
 - Alembic migration 以及 Kubernetes/Tekton 部署清单。
 - 基础身份认证：通过环境变量非交互初始化预置管理员，使用安全密码哈希和数据库会话；

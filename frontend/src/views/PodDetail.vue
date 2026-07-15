@@ -5,10 +5,16 @@
       { label: environment },
       { label: podName, current: true },
     ]" />
-    <PageHeader eyebrow="Pod details" :title="podName" :description="pod ? `${pod.application_name} · ${pod.namespace}` : '正在读取 Pod 运行详情…'">
-      <el-button :loading="loading" @click="loadDetail">刷新</el-button>
-      <el-button :disabled="!pod" @click="enterTerminal">终端</el-button>
-      <el-button type="danger" plain :disabled="!pod" @click="deletePod">删除 Pod</el-button>
+    <PageHeader class="pod-title pod-page-header" eyebrow="Pod details" :title="podName" :description="pod ? `${pod.application_name} · ${pod.namespace}` : '正在读取 Pod 运行详情…'">
+      <el-button :loading="loading" data-runtime-action="refresh" @click="loadDetail">刷新</el-button>
+      <el-dropdown trigger="click" @command="onHeaderAction">
+        <el-button data-runtime-action="more" :disabled="!pod" :icon="MoreFilled" aria-label="Pod 更多操作" />
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="delete-pod" class="danger-item" :disabled="!pod">删除 Pod</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </PageHeader>
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <template v-if="pod">
@@ -21,7 +27,7 @@
       </div>
       <section class="surface detail-card">
         <el-tabs v-model="activeTab" @tab-change="loadTabData">
-          <el-tab-pane label="Overview" name="overview"><PodOverview :pod="pod" /></el-tab-pane>
+          <el-tab-pane label="Overview" name="overview"><PodOverview :pod="pod" @container-logs="openContainerLogs" @container-terminal="openContainerTerminal" /></el-tab-pane>
           <el-tab-pane label="Containers" name="containers">
             <div class="container-grid">
               <article v-for="container in pod.containers" :key="container.name" class="container-card">
@@ -59,6 +65,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { MoreFilled } from '@element-plus/icons-vue'
 import { runtimeApi } from '../api/runtime'
 import type { RuntimeExecSession, RuntimePodDetail } from '../types'
 import DetailBreadcrumb from '../components/common/DetailBreadcrumb.vue'
@@ -74,6 +81,9 @@ const environment=String(route.params.environment),podName=String(route.params.p
 const pod=ref<RuntimePodDetail>(),loading=ref(false),tabLoading=ref(false),error=ref('')
 const activeTab=ref('overview'),selectedContainer=ref(''),tail=ref(500),logs=ref(''),yaml=ref('')
 const terminalOpen=ref(false),session=ref<RuntimeExecSession>()
+function openContainerLogs(name:string){selectedContainer.value=name;activeTab.value='logs';void loadLogs()}
+function openContainerTerminal(name:string){selectedContainer.value=name;void enterTerminal()}
+function onHeaderAction(command:string){if(command==='delete-pod')void deletePod()}
 const runtimeLocation=computed(()=>({path:`/devcenter/projects/${projectId}/runtime`,query:{environment,resource:'pods'}}))
 async function loadDetail(){loading.value=true;try{pod.value=await runtimeApi.podDetail(projectId,applicationId,environment,podName);selectedContainer.value=selectedContainer.value||pod.value.containers[0]?.name||'';error.value=''}catch(e){error.value=e instanceof Error?e.message:'Pod 详情读取失败'}finally{loading.value=false}}
 async function loadLogs(){if(!selectedContainer.value)return;tabLoading.value=true;try{logs.value=(await runtimeApi.podLogs(projectId,applicationId,environment,podName,selectedContainer.value,tail.value)).logs}catch(e){ElMessage.error(e instanceof Error?e.message:'日志读取失败')}finally{tabLoading.value=false}}
@@ -85,5 +95,5 @@ async function deletePod(){try{await ElMessageBox.confirm(confirmationCopy('dele
 onMounted(loadDetail)
 </script>
 <style scoped>
-.pod-summary{display:flex;align-items:center;gap:28px;padding:16px 20px;box-shadow:none}.pod-summary span{display:grid;gap:3px;color:var(--muted);font-size:12px}.pod-summary b{color:var(--text);font-size:14px}.detail-card{padding:0 20px 20px;box-shadow:none}.container-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.container-card{padding:18px;border:1px solid var(--border-soft);border-radius:12px}.container-card header{display:flex;justify-content:space-between;gap:12px}.container-card code{display:block;margin:14px 0;color:var(--muted);font-size:11px;word-break:break-all}.container-card dl{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:0}.container-card dl div{display:grid;gap:4px}.container-card dt{color:var(--muted);font-size:11px}.container-card dd{margin:0;font-size:13px}.container-card p{color:var(--danger);font-size:12px}.tab-toolbar{display:flex;gap:10px;margin-bottom:12px}.tab-toolbar .el-select{width:180px}.code-view{min-height:420px;max-height:65vh;overflow:auto;margin:0;padding:18px;border-radius:10px;background:#0b1020;color:#dbeafe;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}@media(max-width:800px){.pod-summary{align-items:flex-start;flex-wrap:wrap}.container-grid{grid-template-columns:1fr}}
+.pod-page-header :deep(.page-header){margin-bottom:18px}.pod-page-header :deep(.page-header h1){max-width:900px;font-size:24px;line-height:1.25;letter-spacing:-.025em;overflow-wrap:anywhere}.pod-page-header :deep(.page-header p){margin-top:6px;font-size:13px}.pod-page-header :deep(.page-actions){gap:8px}.pod-page-header :deep(.page-actions .el-button){height:32px;padding:0 12px}.pod-summary{display:flex;align-items:center;gap:28px;padding:12px 18px;border:1px solid var(--border-soft);box-shadow:none}.pod-summary span{display:grid;gap:3px;color:var(--muted);font-size:12px}.pod-summary b{color:var(--text);font-size:14px}.detail-card{padding:0 18px 18px;box-shadow:none}.detail-card :deep(.el-tabs__header){margin:0;border-bottom:1px solid var(--border-soft)}.detail-card :deep(.el-tabs__item){height:46px;color:var(--muted);font-size:13px}.detail-card :deep(.el-tabs__item.is-active){color:var(--primary);font-weight:700}.container-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding-top:18px}.container-card{padding:16px;border:1px solid var(--border-soft);border-radius:10px}.container-card header{display:flex;justify-content:space-between;gap:12px}.container-card code{display:block;margin:12px 0;color:var(--muted);font-size:11px;word-break:break-all}.container-card dl{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:0}.container-card dl div{display:grid;gap:4px}.container-card dt{color:var(--muted);font-size:11px}.container-card dd{margin:0;font-size:13px}.container-card p{color:var(--danger);font-size:12px}.tab-toolbar{display:flex;gap:10px;margin:16px 0 12px}.tab-toolbar .el-select{width:180px}.code-view{min-height:420px;max-height:65vh;overflow:auto;margin:0;padding:18px;border:1px solid var(--border-soft);border-radius:8px;background:#f8fafc;color:#344054;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}@media(max-width:800px){.pod-summary{align-items:flex-start;flex-wrap:wrap}.container-grid{grid-template-columns:1fr}}
 </style>

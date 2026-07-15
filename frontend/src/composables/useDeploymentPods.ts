@@ -22,9 +22,12 @@ export function useDeploymentPods(
   async function request(target: DeploymentPodTarget, force = false) {
     const current = entries[target.key]
     if (!force && (current?.loading || current?.loaded)) return
-    const entry = current || (entries[target.key] = {
-      loading: false, loaded: false, pods: [], error: '',
-    })
+    if (!current) {
+      entries[target.key] = {
+        loading: false, loaded: false, pods: [], error: '',
+      }
+    }
+    const entry = entries[target.key]
     entry.loading = true
     entry.error = ''
     try {

@@ -1,3 +1,4 @@
+import { watchEffect } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import { useDeploymentPods } from './useDeploymentPods'
 
@@ -17,6 +18,25 @@ describe('useDeploymentPods', () => {
 
     expect(loader).toHaveBeenCalledTimes(1)
     expect(state.entries[target.key].pods).toEqual(pods)
+  })
+
+  it('publishes loading and completion through the reactive entry', async () => {
+    let resolve: (value: typeof pods) => void = () => undefined
+    const loader = vi.fn(() => new Promise<typeof pods>(done => { resolve = done }))
+    const state = useDeploymentPods(loader)
+    const observed: string[] = []
+    const stop = watchEffect(() => {
+      const entry = state.entries[target.key]
+      observed.push(entry ? `${entry.loading}:${entry.loaded}:${entry.pods.length}` : 'missing')
+    }, { flush: 'sync' })
+
+    const pending = state.load(target)
+    resolve(pods)
+    await pending
+
+    expect(observed).toContain('true:false:0')
+    expect(observed[observed.length - 1]).toBe('false:true:1')
+    stop()
   })
 
   it('keeps errors row-local and retries only that row', async () => {
